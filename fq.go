@@ -43,8 +43,8 @@ func (q *fqscheduler) enqueue(packet *Packet) {
 	defer q.lock.Unlock()
 	queue := q.chooseQueue(packet)
 	queue.enqueue(packet)
-	// STARTING PACKET SERVICING, not sure if this is right place to start
-	// timing
+
+	// STARTING PACKET SERVICING
 	packet.starttime = uint64(time.Now().UnixNano())
 
 	packet.updateTimeQueued()

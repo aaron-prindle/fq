@@ -48,10 +48,11 @@ func (p *Packet) updateTimeDequeued() {
 
 // used when Packet's request is filled to store actual service time
 func (p *Packet) updateTimeFinished() {
-	p.queue.requestsexecuting--
-
 	p.queue.lock.Lock()
 	defer p.queue.lock.Unlock()
+
+	// ENDING PACKET SERVICING
+	p.queue.requestsexecuting--
 
 	p.endtime = uint64(time.Now().UnixNano())
 	p.actservicetime = p.starttime - p.endtime
