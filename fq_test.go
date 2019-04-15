@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+// adapted from https://github.com/tadglines/wfq/blob/master/wfq_test.go
+
 type flowDesc struct {
 	// In
 	ftotal uint64 // Total units in flow
