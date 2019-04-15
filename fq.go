@@ -33,9 +33,6 @@ func (q *fqscheduler) enqueue(packet *Packet) {
 	defer q.lock.Unlock()
 
 	queue := q.chooseQueue(packet)
-	// order of updatetime and enqueue changes things?
-	// q.updateTime(packet, queue)
-	// queue.enqueue(packet)
 	queue.enqueue(packet)
 	q.updateTime(packet, queue)
 
@@ -70,4 +67,3 @@ func (q *fqscheduler) selectQueue() *Queue {
 	}
 	return minqueue
 }
-

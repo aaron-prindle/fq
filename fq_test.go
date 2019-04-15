@@ -42,7 +42,7 @@ func genFlow(fq *fqscheduler, desc *flowDesc, key uint64, done_wg *sync.WaitGrou
 	(*done_wg).Done()
 }
 
-func consumeQueue(fq *fqscheduler, descs []flowDesc) (float64, error) {
+func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, error) {
 	active := make(map[uint64]bool)
 	var total uint64
 	acnt := make(map[uint64]uint64)
@@ -84,10 +84,11 @@ func consumeQueue(fq *fqscheduler, descs []flowDesc) (float64, error) {
 
 	var variance float64
 	for key := uint64(0); key < uint64(len(descs)); key++ {
+		if total == 0 {
+			t.Fatalf("expected 'total' to be nonzero")
+		}
 		descs[key].idealPercent = (((float64(total) * float64(0+1)) / float64(wsum)) / float64(total)) * 100
 		descs[key].actualPercent = (float64(acnt[key]) / float64(total)) * 100
-		fmt.Printf("descs[key].idealPercent: %v\n", descs[key].idealPercent)
-		fmt.Printf("descs[key].actualPercent: %v\n", descs[key].actualPercent)
 
 		x := descs[key].idealPercent - descs[key].actualPercent
 		x *= x
@@ -157,13 +158,13 @@ func TestUniformMultiFlow(t *testing.T) {
 	}()
 	swg.Done()
 
-	stdDev, err := consumeQueue(fq, flows)
+	stdDev, err := consumeQueue(t, fq, flows)
 
 	if err != nil {
 		t.Fatal(err.Error())
 	}
 
-	if stdDev > 0.1 {
+	if stdDev > 0.2 {
 		for k, d := range flows {
 			t.Logf("For flow %d: Expected %v%%, got %v%%", k, d.idealPercent, d.actualPercent)
 		}
