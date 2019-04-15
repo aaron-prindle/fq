@@ -52,13 +52,16 @@ func (q *fqscheduler) dequeue() (*Packet, bool) {
 	defer q.lock.Unlock()
 
 	queue := q.selectQueue()
+	if queue == nil {
+		return nil, false
+	}
 	packet, ok := queue.dequeue()
 	return packet, ok
 }
 
 func (q *fqscheduler) selectQueue() *Queue {
 	minvirfinish := uint64(math.MaxUint64)
-	minqueue := q.queues[0]
+	var minqueue *Queue
 	for _, queue := range q.queues {
 		if len(queue.Packets) != 0 && queue.Packets[0].virfinish < minvirfinish {
 			minvirfinish = queue.Packets[0].virfinish
