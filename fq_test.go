@@ -63,6 +63,8 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 		pktTotal += desc.ftotal
 	}
 
+	// stdDev appears to change quite a bit if the queue is dequeued without
+	// waiting
 	time.Sleep(1 * time.Second)
 	for i, ok := fq.dequeue(); ok; i, ok = fq.dequeue() {
 		time.Sleep(time.Microsecond) // Simulate constrained bandwidth
@@ -93,8 +95,7 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 
 	var variance float64
 	for key := uint64(0); key < uint64(len(descs)); key++ {
-		// if total is 0, percents become NaN and those NaN values pass the test
-		// this catches that case
+		// if total is 0, percents become NaN and those values would otherwise pass
 		if total == 0 {
 			t.Fatalf("expected 'total' to be nonzero")
 		}
