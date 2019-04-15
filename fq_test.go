@@ -91,6 +91,8 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 		}
 		descs[key].idealPercent = (((float64(total) * float64(0+1)) / float64(wsum)) / float64(total)) * 100
 		descs[key].actualPercent = (float64(acnt[key]) / float64(total)) * 100
+		fmt.Printf("descs[key].idealPercent: %f\n", descs[key].idealPercent)
+		fmt.Printf("descs[key].actualPercent: %f\n", descs[key].actualPercent)
 
 		x := descs[key].idealPercent - descs[key].actualPercent
 		x *= x
@@ -139,14 +141,14 @@ func TestUniformMultiFlow(t *testing.T) {
 	var flows = []flowDesc{
 		{1000, 1, 1, 0, 0},
 		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
+		// {1000, 1, 1, 0, 0},
+		// {1000, 1, 1, 0, 0},
+		// {1000, 1, 1, 0, 0},
+		// {1000, 1, 1, 0, 0},
+		// {1000, 1, 1, 0, 0},
+		// {1000, 1, 1, 0, 0},
+		// {1000, 1, 1, 0, 0},
+		// {1000, 1, 1, 0, 0},
 	}
 
 	swg.Add(1)

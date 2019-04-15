@@ -1,15 +1,10 @@
 package fq
 
-const (
-	scaledOne uint64 = 1 << 16
-)
+import "fmt"
 
-// mods for our algo
-// use min heap vs selectQueue
-// 1) we are dispatching requests to be served rather than packets to be transmitted
-// 2) the actual service time (i.e., duration) is not known until a request is done being served
-//
-// 1 & 2 can be handled by using duration time instead of size
+// const (
+// 	scaledOne uint64 = 1 << 16
+// )
 
 type Packet struct {
 	// request   http.Request
@@ -17,22 +12,36 @@ type Packet struct {
 	virfinish uint64
 	size      uint64
 	queue     *Queue
+	starttime uint64
+	endtime   uint64
 	//
 	key uint64
 	seq uint64
+	//
+	estservicetime uint64
+	actservicetime uint64
 }
 
 type Queue struct {
 	Packets       []*Packet
 	key           uint64
 	lastvirfinish uint64
+	//
+	requestsexecuting bool
+	virstart          uint64
+	// instead composed from 3 values
+	// queuelen len(Packets)
+	// packet requestPosition
+	// virtualstartime?
 }
 
 func (q *Queue) enqueue(packet *Packet) {
+	fmt.Printf("enqueue - queue[%d]: %d packets\n", q.key, len(q.Packets))
 	q.Packets = append(q.Packets, packet)
 }
 
 func (q *Queue) dequeue() (*Packet, bool) {
+	fmt.Printf("dequeue - queue[%d]: %d packets\n", q.key, len(q.Packets))
 	if len(q.Packets) == 0 {
 		return nil, false
 	}
