@@ -43,9 +43,9 @@ func (q *fqscheduler) enqueue(packet *Packet) {
 	defer q.lock.Unlock()
 	queue := q.chooseQueue(packet)
 	queue.enqueue(packet)
-	// // STARTING PACKET SERVICING, not sure if this is right place to start
-	// // timing
-	// packet.starttime = uint64(time.Now().UnixNano())
+	// STARTING PACKET SERVICING, not sure if this is right place to start
+	// timing
+	packet.starttime = uint64(time.Now().UnixNano())
 
 	q.updateTimeQueued(packet, queue)
 }
@@ -76,6 +76,9 @@ func (q *fqscheduler) updateTimeDequeued(packet *Packet, queue *Queue) {
 }
 
 func (q *fqscheduler) updateTimeFinished(packet *Packet, queue *Queue) {
+	packet.endtime = uint64(time.Now().UnixNano())
+	packet.actservicetime = packet.starttime - packet.endtime
+
 	S := packet.actservicetime
 	G := packet.estservicetime
 	queue.virstart -= (G - S)

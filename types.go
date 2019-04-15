@@ -1,7 +1,5 @@
 package fq
 
-import "fmt"
-
 // const (
 // 	scaledOne uint64 = 1 << 16
 // )
@@ -32,16 +30,16 @@ type Queue struct {
 	// instead composed from 3 values
 	// queuelen len(Packets)
 	// packet requestPosition
-	// virtualstartime?
+	// virstart?
 }
 
 func (q *Queue) enqueue(packet *Packet) {
-	fmt.Printf("enqueue - queue[%d]: %d packets\n", q.key, len(q.Packets))
+	// fmt.Printf("enqueue - queue[%d]: %d packets\n", q.key, len(q.Packets))
 	q.Packets = append(q.Packets, packet)
 }
 
 func (q *Queue) dequeue() (*Packet, bool) {
-	fmt.Printf("dequeue - queue[%d]: %d packets\n", q.key, len(q.Packets))
+	// fmt.Printf("dequeue - queue[%d]: %d packets\n", q.key, len(q.Packets))
 	if len(q.Packets) == 0 {
 		return nil, false
 	}
