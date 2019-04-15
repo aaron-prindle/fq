@@ -47,41 +47,7 @@ func (q *fqscheduler) enqueue(packet *Packet) {
 	// timing
 	packet.starttime = uint64(time.Now().UnixNano())
 
-	q.updateTimeQueued(packet, queue)
-}
-
-func (q *fqscheduler) updateTimeQueued(packet *Packet, queue *Queue) {
-	packet.estservicetime = 60000
-	packet.actservicetime = 60000
-	if len(queue.Packets) == 0 && !queue.requestsexecuting {
-		// queue.virStart is ignored
-		// queues.lastvirfinish is in the virtualpast
-		queue.virstart = uint64(time.Now().UnixNano())
-	}
-	if len(queue.Packets) == 0 && queue.requestsexecuting {
-		queue.virstart = queue.lastvirfinish
-	}
-
-	packet.virfinish = (uint64(len(queue.Packets)+1))*packet.estservicetime + queue.virstart
-
-	if len(queue.Packets) > 0 {
-		// last virtual finish time of the queue is the virtual finish
-		// time of the last request in the queue
-		queue.lastvirfinish = packet.virfinish // this pkt is last pkt
-	}
-}
-
-func (q *fqscheduler) updateTimeDequeued(packet *Packet, queue *Queue) {
-	queue.virstart += packet.estservicetime
-}
-
-func (q *fqscheduler) updateTimeFinished(packet *Packet, queue *Queue) {
-	packet.endtime = uint64(time.Now().UnixNano())
-	packet.actservicetime = packet.starttime - packet.endtime
-
-	S := packet.actservicetime
-	G := packet.estservicetime
-	queue.virstart -= (G - S)
+	packet.updateTimeQueued()
 }
 
 func (q *fqscheduler) dequeue() (*Packet, bool) {
@@ -97,8 +63,7 @@ func (q *fqscheduler) dequeue() (*Packet, bool) {
 		packet.endtime = uint64(time.Now().UnixNano())
 	}
 	if ok {
-		q.updateTimeDequeued(packet, queue)
-		q.updateTimeFinished(packet, queue)
+		packet.updateTimeDequeued()
 	}
 	return packet, ok
 }

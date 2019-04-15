@@ -1,8 +1,26 @@
 package fq
 
+import (
+	"sync"
+	"time"
+)
+
 // const (
 // 	scaledOne uint64 = 1 << 16
 // )
+
+type Packetable interface {
+	getitem() interface{}
+	getvirfinish() uint64
+	getsize() uint64
+	getqueue() uint64
+	getstarttime() uint64
+	getendtime() uint64
+	getkey() uint64
+	getseq() uint64
+	getestservicetime() uint64
+	getactservicetime() uint64
+}
 
 type Packet struct {
 	// request   http.Request
@@ -21,6 +39,7 @@ type Packet struct {
 }
 
 type Queue struct {
+	lock          sync.Mutex
 	Packets       []*Packet
 	key           uint64
 	lastvirfinish uint64
@@ -46,6 +65,48 @@ func (q *Queue) dequeue() (*Packet, bool) {
 	packet := q.Packets[0]
 	q.Packets = q.Packets[1:]
 	return packet, true
+}
+
+func (p *Packet) updateTimeQueued() {
+	p.queue.lock.Lock()
+	defer p.queue.lock.Unlock()
+
+	if len(p.queue.Packets) == 0 && !p.queue.requestsexecuting {
+		// p.queue.virStart is ignored
+		// queues.lastvirfinish is in the virtualpast
+		p.queue.virstart = uint64(time.Now().UnixNano())
+	}
+	if len(p.queue.Packets) == 0 && p.queue.requestsexecuting {
+		p.queue.virstart = p.queue.lastvirfinish
+	}
+
+	p.virfinish = (uint64(len(p.queue.Packets)+1))*p.estservicetime + p.queue.virstart
+
+	if len(p.queue.Packets) > 0 {
+		// last virtual finish time of the queue is the virtual finish
+		// time of the last request in the queue
+		p.queue.lastvirfinish = p.virfinish // this pkt is last pkt
+	}
+}
+
+func (p *Packet) updateTimeDequeued() {
+	p.queue.lock.Lock()
+	defer p.queue.lock.Unlock()
+
+	p.queue.virstart += p.estservicetime
+}
+
+// used when Packet's request is filled to store actual service time
+func (p *Packet) updateTimeFinished() {
+	p.queue.lock.Lock()
+	defer p.queue.lock.Unlock()
+
+	p.endtime = uint64(time.Now().UnixNano())
+	p.actservicetime = p.starttime - p.endtime
+
+	S := p.actservicetime
+	G := p.estservicetime
+	p.queue.virstart -= (G - S)
 }
 
 func initQueues(n int, key uint64) []*Queue {

@@ -27,6 +27,8 @@ func genFlow(fq *fqscheduler, desc *flowDesc, key uint64, done_wg *sync.WaitGrou
 	for i, t := uint64(1), uint64(0); t < desc.ftotal; i++ {
 		//time.Sleep(time.Microsecond)
 		it := new(Packet)
+		it.estservicetime = 100
+
 		it.key = key
 		if desc.imin == desc.imax {
 			it.size = desc.imax
@@ -61,6 +63,9 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 		for i, ok := fq.dequeue(); ok; i, ok = fq.dequeue() {
 			hasntEntered = false
 			time.Sleep(time.Microsecond) // Simulate constrained bandwidth
+			// TODO(aaron-prindle) added this
+			i.updateTimeFinished()
+
 			it := i
 			seq := seqs[it.key]
 			if seq+1 != it.seq {
@@ -91,9 +96,6 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 		}
 		descs[key].idealPercent = (((float64(total) * float64(0+1)) / float64(wsum)) / float64(total)) * 100
 		descs[key].actualPercent = (float64(acnt[key]) / float64(total)) * 100
-		// fmt.Printf("descs[key].idealPercent: %f\n", descs[key].idealPercent)
-		// fmt.Printf("descs[key].actualPercent: %f\n", descs[key].actualPercent)
-
 		x := descs[key].idealPercent - descs[key].actualPercent
 		x *= x
 		variance += x
@@ -111,6 +113,7 @@ func TestSingleFlow(t *testing.T) {
 	go func() {
 		for i := 1; i < 10000; i++ {
 			it := &Packet{}
+			it.estservicetime = 100
 			it.key = 1
 			it.size = uint64(rand.Int63n(10) + 1)
 			it.seq = uint64(i)
@@ -141,14 +144,14 @@ func TestUniformMultiFlow(t *testing.T) {
 	var flows = []flowDesc{
 		{1000, 1, 1, 0, 0},
 		{1000, 1, 1, 0, 0},
-		// {1000, 1, 1, 0, 0},
-		// {1000, 1, 1, 0, 0},
-		// {1000, 1, 1, 0, 0},
-		// {1000, 1, 1, 0, 0},
-		// {1000, 1, 1, 0, 0},
-		// {1000, 1, 1, 0, 0},
-		// {1000, 1, 1, 0, 0},
-		// {1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
 	}
 
 	swg.Add(1)
