@@ -54,10 +54,10 @@ func consumeQueue(fq *fqscheduler, descs []flowDesc) (float64, error) {
 		wsum += uint64(0 + 1)
 	}
 
-	hasEntered := false
-	for hasEntered {
+	hasntEntered := true
+	for hasntEntered {
 		for i, ok := fq.dequeue(); ok; i, ok = fq.dequeue() {
-			hasEntered = true
+			hasntEntered = false
 			time.Sleep(time.Microsecond) // Simulate constrained bandwidth
 			it := i
 			seq := seqs[it.key]
@@ -86,6 +86,9 @@ func consumeQueue(fq *fqscheduler, descs []flowDesc) (float64, error) {
 	for key := uint64(0); key < uint64(len(descs)); key++ {
 		descs[key].idealPercent = (((float64(total) * float64(0+1)) / float64(wsum)) / float64(total)) * 100
 		descs[key].actualPercent = (float64(acnt[key]) / float64(total)) * 100
+		fmt.Printf("descs[key].idealPercent: %v\n", descs[key].idealPercent)
+		fmt.Printf("descs[key].actualPercent: %v\n", descs[key].actualPercent)
+
 		x := descs[key].idealPercent - descs[key].actualPercent
 		x *= x
 		variance += x
