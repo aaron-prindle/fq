@@ -11,6 +11,11 @@ const (
 )
 
 // mods for our algo
+// use min heap vs selectQueue
+// 1) we are dispatching requests to be served rather than packets to be transmitted
+// 2) the actual service time (i.e., duration) is not known until a request is done being served
+//
+// 1 & 2 can be handled by using duration time instead of size
 
 type Packet struct {
 	// request   http.Request
@@ -19,9 +24,8 @@ type Packet struct {
 	size      uint64
 	queue     *Queue
 	//
-	key    uint64
-	weight uint8
-	seq    uint64
+	key uint64
+	seq uint64
 }
 
 func (q *fqscheduler) chooseQueue(packet *Packet) *Queue {

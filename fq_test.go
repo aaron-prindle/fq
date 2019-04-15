@@ -15,7 +15,6 @@ type flowDesc struct {
 	ftotal uint64 // Total units in flow
 	imin   uint64 // Min Packet size
 	imax   uint64 // Max Packet size
-	weight uint8  // Flow weight
 
 	// Out
 	idealPercent  float64
@@ -36,7 +35,6 @@ func genFlow(fq *fqscheduler, desc *flowDesc, key uint64, done_wg *sync.WaitGrou
 			it.size = desc.ftotal - t
 		}
 		t += it.size
-		it.weight = desc.weight
 		it.seq = i
 		// new packet
 		fq.enqueue(it)
@@ -52,8 +50,8 @@ func consumeQueue(fq *fqscheduler, descs []flowDesc) (float64, error) {
 	seqs := make(map[uint64]uint64)
 
 	var wsum uint64
-	for _, d := range descs {
-		wsum += uint64(d.weight + 1)
+	for range descs {
+		wsum += uint64(0 + 1)
 	}
 
 	hasEntered := false
@@ -86,7 +84,7 @@ func consumeQueue(fq *fqscheduler, descs []flowDesc) (float64, error) {
 
 	var variance float64
 	for key := uint64(0); key < uint64(len(descs)); key++ {
-		descs[key].idealPercent = (((float64(total) * float64(descs[key].weight+1)) / float64(wsum)) / float64(total)) * 100
+		descs[key].idealPercent = (((float64(total) * float64(0+1)) / float64(wsum)) / float64(total)) * 100
 		descs[key].actualPercent = (float64(acnt[key]) / float64(total)) * 100
 		x := descs[key].idealPercent - descs[key].actualPercent
 		x *= x
@@ -107,7 +105,6 @@ func TestSingleFlow(t *testing.T) {
 			it := &Packet{}
 			it.key = 1
 			it.size = uint64(rand.Int63n(10) + 1)
-			it.weight = 1
 			it.seq = uint64(i)
 			fq.enqueue(it)
 		}
@@ -134,16 +131,16 @@ func TestUniformMultiFlow(t *testing.T) {
 	var wg sync.WaitGroup
 
 	var flows = []flowDesc{
-		{1000, 1, 1, 0, 0, 0},
-		{1000, 1, 1, 0, 0, 0},
-		{1000, 1, 1, 0, 0, 0},
-		{1000, 1, 1, 0, 0, 0},
-		{1000, 1, 1, 0, 0, 0},
-		{1000, 1, 1, 0, 0, 0},
-		{1000, 1, 1, 0, 0, 0},
-		{1000, 1, 1, 0, 0, 0},
-		{1000, 1, 1, 0, 0, 0},
-		{1000, 1, 1, 0, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
+		{1000, 1, 1, 0, 0},
 	}
 
 	swg.Add(1)
