@@ -51,6 +51,8 @@ func (q *fqscheduler) enqueue(packet *Packet) {
 }
 
 func (q *fqscheduler) updateTimeQueued(packet *Packet, queue *Queue) {
+	packet.estservicetime = 60000
+	packet.actservicetime = 60000
 	if len(queue.Packets) == 0 && !queue.requestsexecuting {
 		// queue.virStart is ignored
 		// queues.lastvirfinish is in the virtualpast
