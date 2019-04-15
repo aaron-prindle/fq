@@ -58,6 +58,11 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 		wsum += uint64(0 + 1)
 	}
 
+	pktTotal := uint64(0)
+	for _, desc := range descs {
+		pktTotal += desc.ftotal
+	}
+
 	time.Sleep(1 * time.Second)
 	for i, ok := fq.dequeue(); ok; i, ok = fq.dequeue() {
 		time.Sleep(time.Microsecond) // Simulate constrained bandwidth
@@ -88,6 +93,8 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 
 	var variance float64
 	for key := uint64(0); key < uint64(len(descs)); key++ {
+		// if total is 0, percents become NaN and those NaN values pass the test
+		// this catches that case
 		if total == 0 {
 			t.Fatalf("expected 'total' to be nonzero")
 		}
@@ -168,7 +175,7 @@ func TestUniformMultiFlow(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	if stdDev > 2.0 { // increased from 0.2 -> 2 after 6fb540f13b9278df8006371e44052aa74b5f93bd
+	if stdDev > 0.1 { // increased from 0.2 -> 2 after 6fb540f13b9278df8006371e44052aa74b5f93bd
 		for k, d := range flows {
 			t.Logf("For flow %d: Expected %v%%, got %v%%", k, d.idealPercent, d.actualPercent)
 		}

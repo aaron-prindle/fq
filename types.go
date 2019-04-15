@@ -5,26 +5,8 @@ import (
 	"time"
 )
 
-// const (
-// 	scaledOne uint64 = 1 << 16
-// )
-
-type Packetable interface {
-	getitem() interface{}
-	getvirfinish() uint64
-	getsize() uint64
-	getqueue() uint64
-	getstarttime() uint64
-	getendtime() uint64
-	getkey() uint64
-	getseq() uint64
-	getestservicetime() uint64
-	getactservicetime() uint64
-}
-
 type Packet struct {
 	// request   http.Request
-	item      interface{}
 	virfinish uint64
 	size      uint64
 	queue     *Queue
@@ -38,45 +20,16 @@ type Packet struct {
 	actservicetime uint64
 }
 
-type Queue struct {
-	lock          sync.Mutex
-	Packets       []*Packet
-	key           uint64
-	lastvirfinish uint64
-	//
-	requestsexecuting bool
-	virstart          uint64
-	// instead composed from 3 values
-	// queuelen len(Packets)
-	// packet requestPosition
-	// virstart?
-}
-
-func (q *Queue) enqueue(packet *Packet) {
-	// fmt.Printf("enqueue - queue[%d]: %d packets\n", q.key, len(q.Packets))
-	q.Packets = append(q.Packets, packet)
-}
-
-func (q *Queue) dequeue() (*Packet, bool) {
-	// fmt.Printf("dequeue - queue[%d]: %d packets\n", q.key, len(q.Packets))
-	if len(q.Packets) == 0 {
-		return nil, false
-	}
-	packet := q.Packets[0]
-	q.Packets = q.Packets[1:]
-	return packet, true
-}
-
 func (p *Packet) updateTimeQueued() {
 	p.queue.lock.Lock()
 	defer p.queue.lock.Unlock()
 
-	if len(p.queue.Packets) == 0 && !p.queue.requestsexecuting {
+	if len(p.queue.Packets) == 0 && p.queue.requestsexecuting == 0 {
 		// p.queue.virStart is ignored
 		// queues.lastvirfinish is in the virtualpast
 		p.queue.virstart = uint64(time.Now().UnixNano())
 	}
-	if len(p.queue.Packets) == 0 && p.queue.requestsexecuting {
+	if len(p.queue.Packets) == 0 && p.queue.requestsexecuting > 0 {
 		p.queue.virstart = p.queue.lastvirfinish
 	}
 
@@ -98,6 +51,8 @@ func (p *Packet) updateTimeDequeued() {
 
 // used when Packet's request is filled to store actual service time
 func (p *Packet) updateTimeFinished() {
+	p.queue.requestsexecuting--
+
 	p.queue.lock.Lock()
 	defer p.queue.lock.Unlock()
 
@@ -107,6 +62,30 @@ func (p *Packet) updateTimeFinished() {
 	S := p.actservicetime
 	G := p.estservicetime
 	p.queue.virstart -= (G - S)
+}
+
+type Queue struct {
+	lock          sync.Mutex
+	Packets       []*Packet
+	key           uint64
+	lastvirfinish uint64
+	//
+	requestsexecuting uint64
+	virstart          uint64
+}
+
+func (q *Queue) enqueue(packet *Packet) {
+	q.Packets = append(q.Packets, packet)
+}
+
+func (q *Queue) dequeue() (*Packet, bool) {
+	if len(q.Packets) == 0 {
+		return nil, false
+	}
+	packet := q.Packets[0]
+	q.Packets = q.Packets[1:]
+	q.requestsexecuting++
+	return packet, true
 }
 
 func initQueues(n int, key uint64) []*Queue {
