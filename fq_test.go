@@ -67,9 +67,9 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 	// waiting
 	time.Sleep(1 * time.Second)
 	for i, ok := fq.dequeue(); ok; i, ok = fq.dequeue() {
-		time.Sleep(time.Duration(i.reqtime) * time.Nanosecond) // Simulate constrained bandwidth
-		// time.Sleep(time.Microsecond) // Simulate constrained bandwidth
-		// TODO(aaron-prindle) added this
+		time.Sleep(time.Duration(i.reqtime) * time.Nanosecond) // Simulate request running
+		// this is the callback used once a request is complete to update
+		// virstart/virfinish times with our actual time vs estimated
 		i.updateTimeFinished()
 
 		it := i
@@ -230,46 +230,3 @@ func TestUniformMultiFlowWithRandomServiceTime(t *testing.T) {
 		t.Fatalf("StdDev was expected to be < 0.1 but got %v", stdDev)
 	}
 }
-
-// func TestMultiFlowWithOneLongRunningFlow(t *testing.T) {
-// 	runtime.GOMAXPROCS(runtime.NumCPU())
-// 	queues := initQueues(10000, 0)
-// 	fq := newfqscheduler(queues)
-
-// 	var swg sync.WaitGroup
-// 	var wg sync.WaitGroup
-// 	var flows = []flowDesc{
-// 		{10000, 100, 100, 0, 0},
-// 		{1000, 1, 1, 0, 0},
-// 		{1000, 1, 1, 0, 0},
-// 		{1000, 1, 1, 0, 0},
-// 		{1000, 1, 1, 0, 0},
-// 		{1000, 1, 1, 0, 0},
-// 		{1000, 1, 1, 0, 0},
-// 		{1000, 1, 1, 0, 0},
-// 	}
-
-// 	swg.Add(1)
-// 	wg.Add(len(flows))
-// 	for n := 0; n < len(flows); n++ {
-// 		go genFlow(fq, &flows[n], uint64(n), &wg)
-// 	}
-
-// 	go func() {
-// 		wg.Wait()
-// 	}()
-// 	swg.Done()
-
-// 	stdDev, err := consumeQueue(t, fq, flows)
-
-// 	if err != nil {
-// 		t.Fatal(err.Error())
-// 	}
-
-// 	if stdDev > 0.1 {
-// 		for k, d := range flows {
-// 			t.Logf("For flow %d: Expected %v%%, got %v%%", k, d.idealPercent, d.actualPercent)
-// 		}
-// 		t.Fatalf("StdDev was expected to be < 0.1 but got %v", stdDev)
-// 	}
-// }
