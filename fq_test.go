@@ -14,9 +14,9 @@ import (
 
 type flowDesc struct {
 	// In
-	ftotal uint64 // Total units in flow
-	imin   uint64 // Min Packet size
-	imax   uint64 // Max Packet size
+	ftotal     uint64 // Total units in flow
+	minreqtime uint64 // Min Packet reqtime
+	maxreqtime uint64 // Max Packet reqtime
 
 	// Out
 	idealPercent  float64
@@ -30,15 +30,15 @@ func genFlow(fq *fqscheduler, desc *flowDesc, key uint64, done_wg *sync.WaitGrou
 		it.estservicetime = 100
 
 		it.key = key
-		if desc.imin == desc.imax {
-			it.size = desc.imax
+		if desc.minreqtime == desc.maxreqtime {
+			it.reqtime = desc.maxreqtime
 		} else {
-			it.size = desc.imin + uint64(rand.Int63n(int64(desc.imax-desc.imin)))
+			it.reqtime = desc.minreqtime + uint64(rand.Int63n(int64(desc.maxreqtime-desc.minreqtime)))
 		}
-		if t+it.size > desc.ftotal {
-			it.size = desc.ftotal - t
+		if t+it.reqtime > desc.ftotal {
+			it.reqtime = desc.ftotal - t
 		}
-		t += it.size
+		t += it.reqtime
 		it.seq = i
 		// new packet
 		fq.enqueue(it)
@@ -67,7 +67,8 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 	// waiting
 	time.Sleep(1 * time.Second)
 	for i, ok := fq.dequeue(); ok; i, ok = fq.dequeue() {
-		time.Sleep(time.Microsecond) // Simulate constrained bandwidth
+		time.Sleep(time.Duration(i.reqtime) * time.Nanosecond) // Simulate constrained bandwidth
+		// time.Sleep(time.Microsecond) // Simulate constrained bandwidth
 		// TODO(aaron-prindle) added this
 		i.updateTimeFinished()
 
@@ -81,11 +82,11 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 		if cnt[it.key] == 0 {
 			active[it.key] = true
 		}
-		cnt[it.key] += it.size
+		cnt[it.key] += it.reqtime
 
 		if len(active) == len(descs) {
-			acnt[it.key] += it.size
-			total += it.size
+			acnt[it.key] += it.reqtime
+			total += it.reqtime
 		}
 
 		if cnt[it.key] == descs[it.key].ftotal {
@@ -120,7 +121,7 @@ func TestSingleFlow(t *testing.T) {
 			it := &Packet{}
 			it.estservicetime = 100
 			it.key = 1
-			it.size = uint64(rand.Int63n(10) + 1)
+			it.reqtime = uint64(rand.Int63n(10) + 1)
 			it.seq = uint64(i)
 			fq.enqueue(it)
 		}
@@ -183,3 +184,92 @@ func TestUniformMultiFlow(t *testing.T) {
 		t.Fatalf("StdDev was expected to be < 0.1 but got %v", stdDev)
 	}
 }
+
+func TestUniformMultiFlowWithRandomServiceTime(t *testing.T) {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	queues := initQueues(1000, 0)
+	fq := newfqscheduler(queues)
+
+	var swg sync.WaitGroup
+	var wg sync.WaitGroup
+	var flows = []flowDesc{
+		// ftotal, minreqtime, maxreqtime, weight, ideal, actual
+		{10000, 1, 10, 0, 0},
+		{10000, 1, 10, 0, 0},
+		{10000, 1, 10, 0, 0},
+		{10000, 1, 10, 0, 0},
+		{10000, 1, 10, 0, 0},
+		{10000, 1, 10, 0, 0},
+		{10000, 1, 10, 0, 0},
+		{10000, 1, 10, 0, 0},
+		{10000, 1, 10, 0, 0},
+		{10000, 1, 10, 0, 0},
+	}
+
+	swg.Add(1)
+	wg.Add(len(flows))
+	for n := 0; n < len(flows); n++ {
+		go genFlow(fq, &flows[n], uint64(n), &wg)
+	}
+
+	go func() {
+		wg.Wait()
+	}()
+	swg.Done()
+
+	stdDev, err := consumeQueue(t, fq, flows)
+
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	if stdDev > 1.0 { // this was 0.1 in the original test
+		for k, d := range flows {
+			t.Logf("For flow %d: Expected %v%%, got %v%%", k, d.idealPercent, d.actualPercent)
+		}
+		t.Fatalf("StdDev was expected to be < 0.1 but got %v", stdDev)
+	}
+}
+
+// func TestMultiFlowWithOneLongRunningFlow(t *testing.T) {
+// 	runtime.GOMAXPROCS(runtime.NumCPU())
+// 	queues := initQueues(10000, 0)
+// 	fq := newfqscheduler(queues)
+
+// 	var swg sync.WaitGroup
+// 	var wg sync.WaitGroup
+// 	var flows = []flowDesc{
+// 		{10000, 100, 100, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 	}
+
+// 	swg.Add(1)
+// 	wg.Add(len(flows))
+// 	for n := 0; n < len(flows); n++ {
+// 		go genFlow(fq, &flows[n], uint64(n), &wg)
+// 	}
+
+// 	go func() {
+// 		wg.Wait()
+// 	}()
+// 	swg.Done()
+
+// 	stdDev, err := consumeQueue(t, fq, flows)
+
+// 	if err != nil {
+// 		t.Fatal(err.Error())
+// 	}
+
+// 	if stdDev > 0.1 {
+// 		for k, d := range flows {
+// 			t.Logf("For flow %d: Expected %v%%, got %v%%", k, d.idealPercent, d.actualPercent)
+// 		}
+// 		t.Fatalf("StdDev was expected to be < 0.1 but got %v", stdDev)
+// 	}
+// }

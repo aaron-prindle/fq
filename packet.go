@@ -5,7 +5,7 @@ import "time"
 type Packet struct {
 	// request   http.Request
 	virfinish uint64
-	size      uint64
+	reqtime   uint64
 	queue     *Queue
 	starttime uint64
 	endtime   uint64
