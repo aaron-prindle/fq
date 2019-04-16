@@ -30,7 +30,7 @@ func (p *Packet) updateTimeQueued() {
 		p.queue.virstart = p.queue.lastvirfinish
 	}
 
-	p.virfinish = (uint64(len(p.queue.Packets)+1))*p.estservicetime + p.queue.virstart
+	p.virfinish = (uint64(len(p.queue.Packets)))*p.estservicetime + p.queue.virstart
 
 	if len(p.queue.Packets) > 0 {
 		// last virtual finish time of the queue is the virtual finish

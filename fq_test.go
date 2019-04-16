@@ -230,3 +230,46 @@ func TestUniformMultiFlowWithRandomServiceTime(t *testing.T) {
 		t.Fatalf("StdDev was expected to be < 0.1 but got %v", stdDev)
 	}
 }
+
+// func TestMultiFlowWithOneLongRunningFlow(t *testing.T) {
+// 	runtime.GOMAXPROCS(runtime.NumCPU())
+// 	queues := initQueues(10000, 0)
+// 	fq := newfqscheduler(queues)
+
+// 	var swg sync.WaitGroup
+// 	var wg sync.WaitGroup
+// 	var flows = []flowDesc{
+// 		{10000, 100, 100, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 		{1000, 1, 1, 0, 0},
+// 	}
+
+// 	swg.Add(1)
+// 	wg.Add(len(flows))
+// 	for n := 0; n < len(flows); n++ {
+// 		go genFlow(fq, &flows[n], uint64(n), &wg)
+// 	}
+
+// 	go func() {
+// 		wg.Wait()
+// 	}()
+// 	swg.Done()
+
+// 	stdDev, err := consumeQueue(t, fq, flows)
+
+// 	if err != nil {
+// 		t.Fatal(err.Error())
+// 	}
+
+// 	if stdDev > 0.1 {
+// 		for k, d := range flows {
+// 			t.Logf("For flow %d: Expected %v%%, got %v%%", k, d.idealPercent, d.actualPercent)
+// 		}
+// 		t.Fatalf("StdDev was expected to be < 0.1 but got %v", stdDev)
+// 	}
+// }
