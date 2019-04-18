@@ -3,7 +3,6 @@ package fq
 import (
 	"math"
 	"sync"
-	"time"
 )
 
 // mods for our algo
@@ -56,7 +55,7 @@ func (q *fqscheduler) enqueue(packet *Packet) {
 	queue.enqueue(packet)
 
 	// STARTING PACKET SERVICING
-	packet.starttime = uint64(time.Now().UnixNano())
+	packet.starttime = q.vt.now()
 
 	packet.updateTimeQueued()
 }
@@ -71,7 +70,7 @@ func (q *fqscheduler) dequeue() (*Packet, bool) {
 	}
 	packet, ok := queue.dequeue()
 	if ok {
-		packet.endtime = uint64(time.Now().UnixNano())
+		packet.endtime = q.vt.now()
 	}
 	if ok {
 		packet.updateTimeDequeued()
