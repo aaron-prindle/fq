@@ -3,12 +3,12 @@ package fq
 import (
 	"math"
 	"sync"
-	"time"
 )
 
 type fqscheduler struct {
 	lock   sync.Mutex
 	queues []*Queue
+	vt     *virtimer
 }
 
 func (q *fqscheduler) chooseQueue(packet *Packet) *Queue {
@@ -24,6 +24,7 @@ func (q *fqscheduler) chooseQueue(packet *Packet) *Queue {
 func newfqscheduler(queues []*Queue) *fqscheduler {
 	fq := &fqscheduler{
 		queues: queues,
+		vt:     &virtimer{},
 	}
 	return fq
 }
@@ -38,9 +39,19 @@ func (q *fqscheduler) enqueue(packet *Packet) {
 
 }
 
+type virtimer struct {
+	round uint64
+}
+
+func (vt *virtimer) now() uint64 {
+	vt.round++
+	return vt.round
+}
+
 func (q *fqscheduler) updateTime(packet *Packet, queue *Queue) {
 	// virStart is the virtual start of service
-	virStart := max(uint64(time.Now().UnixNano()), queue.lastvirfinish)
+	virStart := max(q.vt.now(), queue.lastvirfinish)
+	// virStart := max(uint64(time.Now().UnixNano()), queue.lastvirfinish)
 	// adding multiplier dramatically increases test ratios
 	// packet.virfinish = packet.size + virStart
 	packet.virfinish = packet.size*(scaledOne) + virStart

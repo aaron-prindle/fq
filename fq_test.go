@@ -56,31 +56,28 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 		wsum += uint64(0 + 1)
 	}
 
-	hasntEntered := true
-	for hasntEntered {
-		for i, ok := fq.dequeue(); ok; i, ok = fq.dequeue() {
-			hasntEntered = false
-			time.Sleep(time.Microsecond) // Simulate constrained bandwidth
-			it := i
-			seq := seqs[it.key]
-			if seq+1 != it.seq {
-				return 0, fmt.Errorf("Packet for flow %d came out of queue out-of-order: expected %d, got %d", it.key, seq+1, it.seq)
-			}
-			seqs[it.key] = it.seq
+	time.Sleep(1 * time.Second)
+	for i, ok := fq.dequeue(); ok; i, ok = fq.dequeue() {
+		time.Sleep(time.Microsecond) // Simulate constrained bandwidth
+		it := i
+		seq := seqs[it.key]
+		if seq+1 != it.seq {
+			return 0, fmt.Errorf("Packet for flow %d came out of queue out-of-order: expected %d, got %d", it.key, seq+1, it.seq)
+		}
+		seqs[it.key] = it.seq
 
-			if cnt[it.key] == 0 {
-				active[it.key] = true
-			}
-			cnt[it.key] += it.size
+		if cnt[it.key] == 0 {
+			active[it.key] = true
+		}
+		cnt[it.key] += it.size
 
-			if len(active) == len(descs) {
-				acnt[it.key] += it.size
-				total += it.size
-			}
+		if len(active) == len(descs) {
+			acnt[it.key] += it.size
+			total += it.size
+		}
 
-			if cnt[it.key] == descs[it.key].ftotal {
-				delete(active, it.key)
-			}
+		if cnt[it.key] == descs[it.key].ftotal {
+			delete(active, it.key)
 		}
 	}
 
