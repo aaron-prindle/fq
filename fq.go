@@ -28,14 +28,24 @@ func (q *fqscheduler) chooseQueue(packet *Packet) *Queue {
 type fqscheduler struct {
 	lock   sync.Mutex
 	queues []*Queue
-	closed bool
+	vt     *virtimer
 }
 
 func newfqscheduler(queues []*Queue) *fqscheduler {
 	fq := &fqscheduler{
 		queues: queues,
+		// vt:
 	}
 	return fq
+}
+
+type virtimer struct {
+	round uint64
+}
+
+func (vt *virtimer) now() uint64 {
+	vt.round++
+	return vt.round
 }
 
 func (q *fqscheduler) enqueue(packet *Packet) {
