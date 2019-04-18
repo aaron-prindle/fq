@@ -26,15 +26,16 @@ func (q *fqscheduler) chooseQueue(packet *Packet) *Queue {
 }
 
 type fqscheduler struct {
-	lock   sync.Mutex
+	lock   *sync.Mutex
 	queues []*Queue
 	vt     *virtimer
 }
 
 func newfqscheduler(queues []*Queue) *fqscheduler {
 	fq := &fqscheduler{
+		lock:   &sync.Mutex{},
 		queues: queues,
-		// vt:
+		vt:     &virtimer{},
 	}
 	return fq
 }
