@@ -49,11 +49,7 @@ func (vt *virtimer) now() uint64 {
 }
 
 func (q *fqscheduler) updateTime(packet *Packet, queue *Queue) {
-	// virStart is the virtual start of service
 	virStart := max(q.vt.now(), queue.lastvirfinish)
-	// virStart := max(uint64(time.Now().UnixNano()), queue.lastvirfinish)
-	// adding multiplier dramatically increases test ratios
-	// packet.virfinish = packet.size + virStart
 	packet.virfinish = packet.size*(scaledOne) + virStart
 	queue.lastvirfinish = packet.virfinish
 }
