@@ -57,7 +57,7 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 	}
 
 	time.Sleep(1 * time.Second)
-	for i, ok := fq.dequeue(); ok; i, ok = fq.dequeue() {
+	for i, ok := fq.processround(); ok; i, ok = fq.processround() {
 		time.Sleep(time.Microsecond) // Simulate constrained bandwidth
 		it := i
 		seq := seqs[it.key]
@@ -163,7 +163,7 @@ func TestUniformMultiFlow(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	if stdDev > 0.2 {
+	if stdDev > 0.1 {
 		for k, d := range flows {
 			t.Logf("For flow %d: Expected %v%%, got %v%%", k, d.idealPercent, d.actualPercent)
 		}
