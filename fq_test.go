@@ -25,7 +25,6 @@ type flowDesc struct {
 
 func genFlow(fq *fqscheduler, desc *flowDesc, key uint64, done_wg *sync.WaitGroup) {
 	for i, t := uint64(1), uint64(0); t < desc.ftotal; i++ {
-		//time.Sleep(time.Microsecond)
 		it := new(Packet)
 		it.key = key
 		if desc.imin == desc.imax {
@@ -53,9 +52,13 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 
 	var wsum uint64
 	for range descs {
-		wsum += uint64(0 + 1)
+		wsum += uint64(1)
 	}
 
+	// for !fq.seen {
+
+	// }
+	// TODO(aaron-prindle) remove this
 	time.Sleep(1 * time.Second)
 	for i, ok := fq.processround(); ok; i, ok = fq.processround() {
 		time.Sleep(time.Microsecond) // Simulate constrained bandwidth
@@ -66,16 +69,20 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 		}
 		seqs[it.key] = it.seq
 
+		// set the flow this item is a part of to active
 		if cnt[it.key] == 0 {
 			active[it.key] = true
 		}
 		cnt[it.key] += it.size
 
+		// if # of active flows is equal to the # of total flows, add to total
+		// we are correctly taking a bit from each
 		if len(active) == len(descs) {
 			acnt[it.key] += it.size
 			total += it.size
 		}
 
+		// if all items have been processed from the flow, remove it from active
 		if cnt[it.key] == descs[it.key].ftotal {
 			delete(active, it.key)
 		}
@@ -86,13 +93,20 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 		if total == 0 {
 			t.Fatalf("expected 'total' to be nonzero")
 		}
-		descs[key].idealPercent = (((float64(total) * float64(0+1)) / float64(wsum)) / float64(total)) * 100
+		// idealPercent = total-all-active/len(flows) / total-all-active
+		// idealPercent = ~((10000/10) / 10000) * 100 = ~10
+		// "how many bytes/requests you expect for this flow - all-active"
+		descs[key].idealPercent = (((float64(total)) / float64(wsum)) / float64(total)) * 100
+
+		// actualPercent = requests-for-this-flow-all-active / total-reqs
+		// "how many bytes/requests you got for this flow - all-active"
 		descs[key].actualPercent = (float64(acnt[key]) / float64(total)) * 100
 
 		x := descs[key].idealPercent - descs[key].actualPercent
 		x *= x
 		variance += x
 	}
+	fmt.Println(descs)
 
 	stdDev := math.Sqrt(variance)
 	return stdDev, nil
@@ -125,25 +139,73 @@ func TestSingleFlow(t *testing.T) {
 	}
 }
 
-func TestUniformMultiFlow(t *testing.T) {
+func TestTimingFlow(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	queues := initQueues(1000, 0)
+	queues := initQueues(100, 0)
 	fq := newfqscheduler(queues)
 
 	var swg sync.WaitGroup
 	var wg sync.WaitGroup
 
 	var flows = []flowDesc{
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
-		{1000, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+	}
+
+	swg.Add(1)
+	wg.Add(len(flows))
+	for n := 0; n < len(flows); n++ {
+		go genFlow(fq, &flows[n], uint64(n), &wg)
+	}
+
+	go func() {
+		wg.Wait()
+	}()
+	swg.Done()
+
+	_, err := consumeQueue(t, fq, flows)
+	// stdDev, err := consumeQueue(t, fq, flows)
+
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	// if stdDev > 0.3 {
+	// 	// if stdDev > 0.1 {
+	// 	for k, d := range flows {
+	// 		t.Logf("For flow %d: Expected %v%%, got %v%%", k, d.idealPercent, d.actualPercent)
+	// 	}
+	// 	t.Fatalf("StdDev was expected to be < 0.1 but got %v", stdDev)
+	// }
+}
+
+func TestUniformMultiFlow(t *testing.T) {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	queues := initQueues(100, 0)
+	fq := newfqscheduler(queues)
+
+	var swg sync.WaitGroup
+	var wg sync.WaitGroup
+
+	var flows = []flowDesc{
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
+		{100, 1, 1, 0, 0},
 	}
 
 	swg.Add(1)
@@ -163,6 +225,55 @@ func TestUniformMultiFlow(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
+	// if stdDev > 0.2 {
+	if stdDev > 0.1 {
+		for k, d := range flows {
+			t.Logf("For flow %d: Expected %v%%, got %v%%", k, d.idealPercent, d.actualPercent)
+		}
+		t.Fatalf("StdDev was expected to be < 0.1 but got %v", stdDev)
+	}
+}
+
+func TestOneBurstingFlow(t *testing.T) {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	queues := initQueues(100, 0)
+	fq := newfqscheduler(queues)
+
+	var swg sync.WaitGroup
+	var wg sync.WaitGroup
+
+	var flows = []flowDesc{
+		{100, 1, 1, 0, 0},
+		{10, 1, 1, 0, 0},
+		{10, 1, 1, 0, 0},
+		{10, 1, 1, 0, 0},
+		{10, 1, 1, 0, 0},
+		{10, 1, 1, 0, 0},
+		{10, 1, 1, 0, 0},
+		{10, 1, 1, 0, 0},
+		{10, 1, 1, 0, 0},
+		{10, 1, 1, 0, 0},
+	}
+
+	swg.Add(1)
+	wg.Add(len(flows))
+	for n := 0; n < len(flows); n++ {
+		go genFlow(fq, &flows[n], uint64(n), &wg)
+	}
+
+	go func() {
+		wg.Wait()
+	}()
+	swg.Done()
+
+	stdDev, err := consumeQueue(t, fq, flows)
+
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	// TODO(aaron-prindle) verify that this high of a stdDev makes sense for one high rate flow
+	// if stdDev > 2.0 {
 	if stdDev > 0.1 {
 		for k, d := range flows {
 			t.Logf("For flow %d: Expected %v%%, got %v%%", k, d.idealPercent, d.actualPercent)

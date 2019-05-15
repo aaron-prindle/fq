@@ -1,19 +1,15 @@
 package fq
 
 import (
-	"time"
+	"fmt"
+	"strings"
 )
 
-// const (
-// 	scaledOne uint64 = 1 << 16
-// )
+// TODO(aaron-prindle) currently testing with one concurrent request
+const C = 1 // const C = 300
 
-// mods for our algo
-// use min heap vs selectQueue
-// 1) we are dispatching requests to be served rather than packets to be transmitted
-// 2) the actual service time (i.e., duration) is not known until a request is done being served
-//
-// 1 & 2 can be handled by using duration time instead of size
+// TODO(aaron-prindle) currently service time "G" is not implemented entirely
+const G = 100 // const G = 60000
 
 type Packet struct {
 	// request   http.Request
@@ -24,7 +20,7 @@ type Packet struct {
 	//
 	key       uint64
 	seq       uint64
-	starttime time.Time
+	starttime uint64
 }
 
 type Queue struct {
@@ -35,9 +31,19 @@ type Queue struct {
 	// lastvirfinish     uint64
 }
 
+func (q *Queue) String() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "queue: %d, %d, %d\n", q.key, q.virstart, q.lastvirfinish())
+	fmt.Fprintf(&b, "|")
+	for _, p := range q.Packets {
+		fmt.Fprintf(&b, "%d|", p.starttime)
+	}
+	fmt.Fprintf(&b, "\n")
+	return b.String()
+}
+
 func (q *Queue) enqueue(packet *Packet) {
 	// TODO(aaron-prindle) verify this is correct?
-	packet.queue = q
 	q.Packets = append(q.Packets, packet)
 }
 
@@ -49,9 +55,12 @@ func (q *Queue) lastvirfinish() uint64 {
 	}
 
 	// While the queue is non-empty:
-	// the last virtual finish time of the queue is the virtual finish time of
-	// the last request in the queue.
-	return q.Packets[0].virfinish()
+	// the last virtual finish time of the queue is
+	// the virtual finish time of the last request in the queue.
+	// J * G + (virtual start time)
+	// J is len(q.Packets) for the last request in the queue
+	last := len(q.Packets) - 1
+	return q.Packets[last].virfinish(last)
 }
 
 func (q *Queue) dequeue() (*Packet, bool) {
@@ -75,26 +84,27 @@ func initQueues(n int, key uint64) []*Queue {
 			key:     qkey,
 		})
 	}
-
 	return queues
 }
 
-const G = 60000
-
-func (p *Packet) virfinish() uint64 {
+func (p *Packet) virfinish(J int) uint64 {
 	// The virtual finish time of request number J in the queue
 	// (counting from J=1 for the head) is J * G + (virtual start time).
 
 	// get index?
 	// J is always 1 as you only inspect the packet at head?
-	J := 1
-	// TODO(aaron-prindle) p.queue is nil a lot...
-	return uint64(J*G) + p.queue.virstart
+	// J := 1
+	J += 1 // counting from J=1 for the head
+	return uint64((J)*G) + p.queue.virstart
 }
 
 func (p *Packet) finishRequest() {
 	// S=servicetime
-	S := time.Now().Sub(p.starttime)
-	// TODO(aaron-prindle) verify time untis are correct
-	p.queue.virstart -= G - DurationAsMilli(S)
+	// S := time.Now().Sub(p.starttime)
+	S := NowAsUnixMilli() - p.starttime
+
+	// TODO(aaron-prindle) verify time units are correct
+	// When a request finishes being served, and the actual service time was S,
+	// the queue’s virtual start time is decremented by G - S.
+	p.queue.virstart -= G - S
 }
