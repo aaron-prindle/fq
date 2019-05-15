@@ -43,7 +43,6 @@ func (q *Queue) String() string {
 }
 
 func (q *Queue) enqueue(packet *Packet) {
-	// TODO(aaron-prindle) verify this is correct?
 	q.Packets = append(q.Packets, packet)
 }
 
@@ -91,11 +90,8 @@ func (p *Packet) virfinish(J int) uint64 {
 	// The virtual finish time of request number J in the queue
 	// (counting from J=1 for the head) is J * G + (virtual start time).
 
-	// get index?
-	// J is always 1 as you only inspect the packet at head?
-	// J := 1
 	J += 1 // counting from J=1 for the head
-	return uint64((J)*G) + p.queue.virstart
+	return uint64(J*G) + p.queue.virstart
 }
 
 func (p *Packet) finishRequest() {

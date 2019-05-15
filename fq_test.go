@@ -23,7 +23,7 @@ type flowDesc struct {
 	actualPercent float64
 }
 
-func genFlow(fq *fqscheduler, desc *flowDesc, key uint64, done_wg *sync.WaitGroup) {
+func genFlow(fq *FQScheduler, desc *flowDesc, key uint64, done_wg *sync.WaitGroup) {
 	for i, t := uint64(1), uint64(0); t < desc.ftotal; i++ {
 		it := new(Packet)
 		it.key = key
@@ -38,12 +38,12 @@ func genFlow(fq *fqscheduler, desc *flowDesc, key uint64, done_wg *sync.WaitGrou
 		t += it.size
 		it.seq = i
 		// new packet
-		fq.enqueue(it)
+		fq.Enqueue(it)
 	}
 	(*done_wg).Done()
 }
 
-func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, error) {
+func consumeQueue(t *testing.T, fq *FQScheduler, descs []flowDesc) (float64, error) {
 	active := make(map[uint64]bool)
 	var total uint64
 	acnt := make(map[uint64]uint64)
@@ -115,7 +115,7 @@ func consumeQueue(t *testing.T, fq *fqscheduler, descs []flowDesc) (float64, err
 func TestSingleFlow(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	queues := initQueues(1, 1)
-	fq := newfqscheduler(queues)
+	fq := newFQScheduler(queues)
 
 	go func() {
 		for i := 1; i < 10000; i++ {
@@ -123,14 +123,14 @@ func TestSingleFlow(t *testing.T) {
 			it.key = 1
 			it.size = uint64(rand.Int63n(10) + 1)
 			it.seq = uint64(i)
-			fq.enqueue(it)
+			fq.Enqueue(it)
 		}
 	}()
 
 	var seq uint64
 	hasEntered := false
 	for hasEntered {
-		for it, ok := fq.dequeue(); ok; it, ok = fq.dequeue() {
+		for it, ok := fq.Dequeue(); ok; it, ok = fq.Dequeue() {
 			if seq+1 != it.seq {
 				t.Fatalf("Packet came out of queue out-of-order: expected %d, got %d", seq+1, it.seq)
 			}
@@ -142,7 +142,7 @@ func TestSingleFlow(t *testing.T) {
 func TestTimingFlow(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	queues := initQueues(100, 0)
-	fq := newfqscheduler(queues)
+	fq := newFQScheduler(queues)
 
 	var swg sync.WaitGroup
 	var wg sync.WaitGroup
@@ -190,7 +190,7 @@ func TestTimingFlow(t *testing.T) {
 func TestUniformMultiFlow(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	queues := initQueues(100, 0)
-	fq := newfqscheduler(queues)
+	fq := newFQScheduler(queues)
 
 	var swg sync.WaitGroup
 	var wg sync.WaitGroup
@@ -237,7 +237,7 @@ func TestUniformMultiFlow(t *testing.T) {
 func TestOneBurstingFlow(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	queues := initQueues(100, 0)
-	fq := newfqscheduler(queues)
+	fq := newFQScheduler(queues)
 
 	var swg sync.WaitGroup
 	var wg sync.WaitGroup

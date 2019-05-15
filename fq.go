@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-type fqscheduler struct {
+type FQScheduler struct {
 	lock   *sync.Mutex
 	queues []*Queue
 	vt     uint64
@@ -18,7 +18,7 @@ type fqscheduler struct {
 
 // TODO(aaron-prindle) add concurrency enforcement - 'C'
 
-func (q *fqscheduler) chooseQueue(packet *Packet) *Queue {
+func (q *FQScheduler) chooseQueue(packet *Packet) *Queue {
 	for _, queue := range q.queues {
 		if packet.key == queue.key {
 			return queue
@@ -27,8 +27,8 @@ func (q *fqscheduler) chooseQueue(packet *Packet) *Queue {
 	panic("no matching queue for packet")
 }
 
-func newfqscheduler(queues []*Queue) *fqscheduler {
-	fq := &fqscheduler{
+func newFQScheduler(queues []*Queue) *FQScheduler {
+	fq := &FQScheduler{
 		lock:   &sync.Mutex{},
 		queues: queues,
 		// R(t) = (server start time) + (1 ns) * (number of rounds since server start).
@@ -47,12 +47,12 @@ func NowAsUnixMilli() uint64 {
 	return uint64(time.Now().UnixNano() / 1e6)
 }
 
-func (q *fqscheduler) processround() (*Packet, bool) {
+func (q *FQScheduler) processround() (*Packet, bool) {
 	q.tick()
-	return q.dequeue()
+	return q.Dequeue()
 }
 
-func (q *fqscheduler) enqueue(packet *Packet) {
+func (q *FQScheduler) Enqueue(packet *Packet) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
@@ -70,11 +70,11 @@ func (q *fqscheduler) enqueue(packet *Packet) {
 
 }
 
-func (q *fqscheduler) now() uint64 {
+func (q *FQScheduler) now() uint64 {
 	return q.vt
 }
 
-func (q *fqscheduler) tick() {
+func (q *FQScheduler) tick() {
 	NEQ := 0
 	reqs := 0
 
@@ -98,7 +98,7 @@ func (q *fqscheduler) tick() {
 	q.vt += uint64(math.Ceil(float64(min(uint64(reqs), uint64(C))) / float64(uint64(NEQ))))
 }
 
-func (q *fqscheduler) updateTime(packet *Packet, queue *Queue) {
+func (q *FQScheduler) updateTime(packet *Packet, queue *Queue) {
 
 	// When a request arrives to an empty queue with no requests executing
 	// (enqueue has just happened prior)
@@ -111,7 +111,7 @@ func (q *fqscheduler) updateTime(packet *Packet, queue *Queue) {
 	queue.virstart = max(q.now(), queue.lastvirfinish())
 }
 
-func (q *fqscheduler) dequeue() (*Packet, bool) {
+func (q *FQScheduler) Dequeue() (*Packet, bool) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
@@ -134,7 +134,7 @@ func (q *fqscheduler) dequeue() (*Packet, bool) {
 	return packet, ok
 }
 
-func (q *fqscheduler) selectQueue() *Queue {
+func (q *FQScheduler) selectQueue() *Queue {
 	// While the queue is empty and has no requests executing
 	// the value of its virtual start time variable is ignored and its last
 	// virtual finish time is considered to be in the virtual past
