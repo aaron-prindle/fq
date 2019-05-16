@@ -8,13 +8,12 @@ import (
 )
 
 type FQScheduler struct {
-	lock     *sync.Mutex
-	queues   []*Queue
-	vt       uint64
-	C        uint64
-	G        uint64
-	seen     bool
-	virstart uint64
+	lock   *sync.Mutex
+	queues []*Queue
+	vt     uint64
+	C      uint64
+	G      uint64
+	seen   bool
 }
 
 // TODO(aaron-prindle) add concurrency enforcement - 'C'
@@ -34,8 +33,7 @@ func newFQScheduler(queues []*Queue) *FQScheduler {
 		lock:   &sync.Mutex{},
 		queues: queues,
 		// R(t) = (server start time) + (1 ns) * (number of rounds since server start).
-		vt:       now,
-		virstart: now,
+		vt: now,
 	}
 	// TODO(aaron-prindle) verify if this is needed?
 	for i := range fq.queues {
@@ -51,6 +49,9 @@ func NowAsUnixMilli() uint64 {
 }
 
 func (q *FQScheduler) processround() (*Packet, bool) {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+
 	q.tick()
 	return q.Dequeue()
 }
@@ -96,7 +97,7 @@ func (q *FQScheduler) tick() {
 
 	// min(sum[over q] reqs(q, t), C) / NEQ(t)
 	// fmt.Printf("vt/dt %d\n", min(uint64(reqs), uint64(C))/uint64(NEQ))
-	fmt.Printf("vt/dt %d\n", uint64(math.Ceil(float64(min(uint64(reqs), uint64(C)))/float64(uint64(NEQ)))))
+	fmt.Printf("now: %d, vt/dt %d\n", q.now(), uint64(math.Ceil(float64(min(uint64(reqs), uint64(C)))/float64(uint64(NEQ)))))
 
 	// q.vt can be 0 if NEQ >> min(sum[over q] reqs(q,t), C)
 	// ceil used to guarantee q.vt advances each step
@@ -109,34 +110,34 @@ func (q *FQScheduler) updateTime(packet *Packet, queue *Queue) {
 	// (enqueue has just happened prior)
 	if len(queue.Packets) == 1 && len(queue.RequestsExecuting) == 0 {
 		// the queue’s virtual start time is set to now().
-		// queue.virstart = q.now()
-		q.virstart = q.now()
+		queue.virstart = q.now()
 	}
 
 	// below was done in orig fq to not give queues priority for not being used recently
 	// TODO(aaron-prindle) the below line is causing issues w/ TestOneBurstingFlow
-	q.virstart = max(q.now(), queue.lastvirfinish(q.virstart))
 	// queue.virstart = max(q.now(), queue.lastvirfinish())
 }
 
 func (q *FQScheduler) Dequeue() (*Packet, bool) {
-	q.lock.Lock()
-	defer q.lock.Unlock()
+	// q.lock.Lock()
+	// defer q.lock.Unlock()
 
 	queue := q.selectQueue()
 	if queue == nil {
 		return nil, false
 	}
 
-	fmt.Printf("%s****\n", queue.String(q.virstart))
+	fmt.Println("***dequeue***")
+	fmt.Printf("dequeue: %d\n", queue.key)
+
+	fmt.Printf("%s****\n", queue.String())
 
 	packet, ok := queue.dequeue()
 
 	if ok {
-		fmt.Printf("dequeue: %d\n", packet.key)
 		// When a request is dequeued for service the queue’s virtual start
 		// time is advanced by G
-		q.virstart += G
+		queue.virstart += G
 	}
 	// queue.RequestsExecuting = append(queue.RequestsExecuting, packet)
 	return packet, ok
@@ -145,10 +146,16 @@ func (q *FQScheduler) Dequeue() (*Packet, bool) {
 func (q *FQScheduler) selectQueue() *Queue {
 	minvirfinish := uint64(math.MaxUint64)
 	var minqueue *Queue
+	fmt.Println("===selectQueue===")
 	for _, queue := range q.queues {
-		fmt.Printf("%s======\n", queue.String(q.virstart))
-		if len(queue.Packets) != 0 && queue.Packets[0].virfinish(0, q.virstart) < minvirfinish {
-			minvirfinish = queue.Packets[0].virfinish(0, q.virstart)
+		// fmt.Printf("%s======\n", queue.String())
+		// if len(queue.Packets) != 0 {
+		// 	fmt.Printf("queue.Packets[0].virfinish(0): %d\n", queue.Packets[0].virfinish(0))
+		// }
+		if len(queue.Packets) != 0 && queue.Packets[0].virfinish(0) < minvirfinish {
+			fmt.Printf("queue.key: %d, queue.Packets[0].virfinish(0): %d\n", queue.key, queue.Packets[0].virfinish(0))
+			fmt.Printf("%s======\n", queue.String())
+			minvirfinish = queue.Packets[0].virfinish(0)
 			minqueue = queue
 		}
 	}
