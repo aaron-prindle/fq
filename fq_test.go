@@ -189,7 +189,7 @@ func TestTimingFlow(t *testing.T) {
 
 func TestUniformMultiFlow(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	queues := initQueues(100, 0)
+	queues := initQueues(10, 0)
 	fq := newFQScheduler(queues)
 
 	var swg sync.WaitGroup
@@ -236,7 +236,7 @@ func TestUniformMultiFlow(t *testing.T) {
 
 func TestOneBurstingFlow(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	queues := initQueues(100, 0)
+	queues := initQueues(10, 0)
 	fq := newFQScheduler(queues)
 
 	var swg sync.WaitGroup
