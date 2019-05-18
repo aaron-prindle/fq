@@ -14,6 +14,7 @@ type FQScheduler struct {
 	C            uint64
 	G            uint64
 	lastrealtime uint64
+	robinidx     int
 }
 
 // TODO(aaron-prindle) add concurrency enforcement - 'C'
@@ -28,18 +29,13 @@ func (q *FQScheduler) chooseQueue(packet *Packet) *Queue {
 }
 
 func newFQScheduler(queues []*Queue) *FQScheduler {
-	now := NowAsUnixMilli()
 	fq := &FQScheduler{
 		lock:   sync.Mutex{},
 		queues: queues,
 		// R(t) = (server start time) + (1 ns) * (number of rounds since server start).
-		vt: now,
+		vt: 0,
+		// vt: now,
 	}
-	// TODO(aaron-prindle) verify if this is needed?
-	for i := range fq.queues {
-		fq.queues[i].virstart = fq.vt
-	}
-
 	return fq
 }
 
@@ -55,24 +51,26 @@ func (q *FQScheduler) Enqueue(packet *Packet) {
 	fmt.Printf("enqueue: %d\n", packet.key)
 
 	queue := q.chooseQueue(packet)
-	// TODO(aaron-prindle) q.now() or get virstart of the queue you go in?
-	packet.starttime = q.now()
+	packet.starttime = NowAsUnixMilli()
 	packet.queue = queue
 
 	// TODO(aaron-prindle) verify the order here
 	queue.enqueue(packet)
 	q.updateTime(packet, queue)
-
 }
 
 func (q *FQScheduler) now() uint64 {
+	return q.vt
+}
+
+func (q *FQScheduler) synctime() {
 	// anything that looks at now updates the time?
 	// updatetime?
 	now := NowAsUnixMilli()
 	timesincelast := q.lastrealtime - now
 	q.vt += timesincelast * q.getvirtualtimeratio()
 	q.lastrealtime = now
-	return q.vt
+	// return q.vt
 }
 
 func (q *FQScheduler) getvirtualtimeratio() uint64 {
@@ -83,7 +81,7 @@ func (q *FQScheduler) getvirtualtimeratio() uint64 {
 		reqs += len(queue.RequestsExecuting)
 		reqs += len(queue.Packets)
 		if len(queue.Packets) > 0 || len(queue.RequestsExecuting) > 0 {
-			NEQ += 1
+			NEQ++
 		}
 	}
 
@@ -92,27 +90,18 @@ func (q *FQScheduler) getvirtualtimeratio() uint64 {
 		return 0
 	}
 
-	// min(sum[over q] reqs(q, t), C) / NEQ(t)
-	// fmt.Printf("vt/dt %d\n", min(uint64(reqs), uint64(C))/uint64(NEQ))
-	fmt.Printf("now: %d, vt/dt %d\n", q.now(), uint64(math.Ceil(float64(min(uint64(reqs), uint64(C)))/float64(uint64(NEQ)))))
-
 	// q.vt can be 0 if NEQ >> min(sum[over q] reqs(q,t), C)
 	// ceil used to guarantee q.vt advances each step
 	return uint64(math.Ceil(float64(min(uint64(reqs), uint64(C))) / float64(uint64(NEQ))))
 }
 
 func (q *FQScheduler) updateTime(packet *Packet, queue *Queue) {
-
 	// When a request arrives to an empty queue with no requests executing
 	// (enqueue has just happened prior)
 	if len(queue.Packets) == 1 && len(queue.RequestsExecuting) == 0 {
 		// the queue’s virtual start time is set to now().
 		queue.virstart = q.now()
 	}
-
-	// below was done in orig fq to not give queues priority for not being used recently
-	// TODO(aaron-prindle) the below line is causing issues w/ TestOneBurstingFlow
-	// queue.virstart = max(q.now(), queue.lastvirfinish())
 }
 
 func (q *FQScheduler) Dequeue() (*Packet, bool) {
@@ -140,24 +129,23 @@ func (q *FQScheduler) Dequeue() (*Packet, bool) {
 	return packet, ok
 }
 
-func (q *FQScheduler) getroundrobinqueue() Queue {
-	queue := servers[i]
-	i++
+func (q *FQScheduler) getroundrobinqueue() (*Queue, int) {
+	queue := q.queues[q.robinidx]
+	curidx := q.robinidx
 
-	// it means that we reached the end of servers
-	// and we need to reset the counter and start
-	// from the beginning
-	if i >= len(servers) {
-		i = 0
+	q.robinidx++
+	if q.robinidx >= len(q.queues) {
+		q.robinidx = 0
 	}
-	return server
+	return queue, curidx
 }
 
 func (q *FQScheduler) selectQueue() *Queue {
 	minvirfinish := uint64(math.MaxUint64)
 	var minqueue *Queue
 	fmt.Println("===selectQueue===")
-	for i, queue := range q.queues {
+	for range q.queues {
+		queue, idx := q.getroundrobinqueue()
 		// fmt.Printf("%s======\n", queue.String())
 		// if len(queue.Packets) != 0 {
 		// 	fmt.Printf("queue.Packets[0].virfinish(0): %d\n", queue.Packets[0].virfinish(0))
@@ -167,7 +155,9 @@ func (q *FQScheduler) selectQueue() *Queue {
 			fmt.Printf("%s======\n", queue.String())
 			minvirfinish = queue.Packets[0].virfinish(0)
 			minqueue = queue
+			q.robinidx = idx
 		}
 	}
+
 	return minqueue
 }
