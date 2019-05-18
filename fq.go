@@ -8,12 +8,12 @@ import (
 )
 
 type FQScheduler struct {
-	lock   *sync.Mutex
-	queues []*Queue
-	vt     uint64
-	C      uint64
-	G      uint64
-	seen   bool
+	lock         sync.Mutex
+	queues       []*Queue
+	vt           uint64
+	C            uint64
+	G            uint64
+	lastrealtime uint64
 }
 
 // TODO(aaron-prindle) add concurrency enforcement - 'C'
@@ -30,7 +30,7 @@ func (q *FQScheduler) chooseQueue(packet *Packet) *Queue {
 func newFQScheduler(queues []*Queue) *FQScheduler {
 	now := NowAsUnixMilli()
 	fq := &FQScheduler{
-		lock:   &sync.Mutex{},
+		lock:   sync.Mutex{},
 		queues: queues,
 		// R(t) = (server start time) + (1 ns) * (number of rounds since server start).
 		vt: now,
@@ -48,20 +48,11 @@ func NowAsUnixMilli() uint64 {
 	return uint64(time.Now().UnixNano() / 1e6)
 }
 
-func (q *FQScheduler) processround() (*Packet, bool) {
-	q.lock.Lock()
-	defer q.lock.Unlock()
-
-	q.tick()
-	return q.Dequeue()
-}
-
 func (q *FQScheduler) Enqueue(packet *Packet) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
 	fmt.Printf("enqueue: %d\n", packet.key)
-	q.seen = true
 
 	queue := q.chooseQueue(packet)
 	// TODO(aaron-prindle) q.now() or get virstart of the queue you go in?
@@ -75,10 +66,16 @@ func (q *FQScheduler) Enqueue(packet *Packet) {
 }
 
 func (q *FQScheduler) now() uint64 {
+	// anything that looks at now updates the time?
+	// updatetime?
+	now := NowAsUnixMilli()
+	timesincelast := q.lastrealtime - now
+	q.vt += timesincelast * q.getvirtualtimeratio()
+	q.lastrealtime = now
 	return q.vt
 }
 
-func (q *FQScheduler) tick() {
+func (q *FQScheduler) getvirtualtimeratio() uint64 {
 	NEQ := 0
 	reqs := 0
 
@@ -92,7 +89,7 @@ func (q *FQScheduler) tick() {
 
 	// no active flows
 	if NEQ == 0 {
-		return
+		return 0
 	}
 
 	// min(sum[over q] reqs(q, t), C) / NEQ(t)
@@ -101,7 +98,7 @@ func (q *FQScheduler) tick() {
 
 	// q.vt can be 0 if NEQ >> min(sum[over q] reqs(q,t), C)
 	// ceil used to guarantee q.vt advances each step
-	q.vt += uint64(math.Ceil(float64(min(uint64(reqs), uint64(C))) / float64(uint64(NEQ))))
+	return uint64(math.Ceil(float64(min(uint64(reqs), uint64(C))) / float64(uint64(NEQ))))
 }
 
 func (q *FQScheduler) updateTime(packet *Packet, queue *Queue) {
@@ -119,8 +116,8 @@ func (q *FQScheduler) updateTime(packet *Packet, queue *Queue) {
 }
 
 func (q *FQScheduler) Dequeue() (*Packet, bool) {
-	// q.lock.Lock()
-	// defer q.lock.Unlock()
+	q.lock.Lock()
+	defer q.lock.Unlock()
 
 	queue := q.selectQueue()
 	if queue == nil {
@@ -143,11 +140,24 @@ func (q *FQScheduler) Dequeue() (*Packet, bool) {
 	return packet, ok
 }
 
+func (q *FQScheduler) getroundrobinqueue() Queue {
+	queue := servers[i]
+	i++
+
+	// it means that we reached the end of servers
+	// and we need to reset the counter and start
+	// from the beginning
+	if i >= len(servers) {
+		i = 0
+	}
+	return server
+}
+
 func (q *FQScheduler) selectQueue() *Queue {
 	minvirfinish := uint64(math.MaxUint64)
 	var minqueue *Queue
 	fmt.Println("===selectQueue===")
-	for _, queue := range q.queues {
+	for i, queue := range q.queues {
 		// fmt.Printf("%s======\n", queue.String())
 		// if len(queue.Packets) != 0 {
 		// 	fmt.Printf("queue.Packets[0].virfinish(0): %d\n", queue.Packets[0].virfinish(0))
