@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
+
+	"k8s.io/apimachinery/pkg/util/clock"
 )
 
 type FQScheduler struct {
 	lock   sync.Mutex
 	queues []*Queue
+	clock  clock.Clock
 	// Verify float64 has enough bits
 	// We will want to be careful about having enough bits. For example, in float64, 1e20 + 1e0 == 1e20.
 	vt           float64
@@ -30,10 +32,11 @@ func (q *FQScheduler) chooseQueue(packet *Packet) *Queue {
 	panic("no matching queue for packet")
 }
 
-func newFQScheduler(queues []*Queue) *FQScheduler {
+func newFQScheduler(queues []*Queue, clock clock.Clock) *FQScheduler {
 	fq := &FQScheduler{
 		lock:   sync.Mutex{},
 		queues: queues,
+		clock:  clock,
 		// R(t) = (server start time) + (1 ns) * (number of rounds since server start).
 		vt: 0,
 		// vt: now,
@@ -48,9 +51,8 @@ func newFQScheduler(queues []*Queue) *FQScheduler {
 // }
 
 // TODO(aaron-prindle) verify that the time units are correct/matching
-func NowAsUnixNano() float64 {
-	return float64(time.Now().UnixNano())
-	// return float64(time.Now().UnixNano() / 1e6)
+func (q *FQScheduler) NowAsUnixNano() float64 {
+	return float64(q.clock.Now().UnixNano())
 }
 
 func (q *FQScheduler) Enqueue(packet *Packet) {
@@ -61,7 +63,7 @@ func (q *FQScheduler) Enqueue(packet *Packet) {
 	fmt.Printf("enqueue: %d\n", packet.key)
 
 	queue := q.chooseQueue(packet)
-	packet.starttime = NowAsUnixNano()
+	packet.starttime = q.NowAsUnixNano()
 	packet.queue = queue
 
 	// TODO(aaron-prindle) verify the order here
@@ -76,7 +78,7 @@ func (q *FQScheduler) now() float64 {
 func (q *FQScheduler) synctime() {
 	// anything that looks at now updates the time?
 	// updatetime?
-	now := NowAsUnixNano()
+	now := q.NowAsUnixNano()
 	timesincelast := q.lastrealtime - now
 	q.vt += timesincelast * q.getvirtualtimeratio()
 	q.lastrealtime = now

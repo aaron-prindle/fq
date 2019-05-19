@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"k8s.io/apimachinery/pkg/util/clock"
 )
 
 // adapted from https://github.com/tadglines/wfq/blob/master/wfq_test.go
@@ -81,11 +83,12 @@ func consumeQueue(t *testing.T, fq *FQScheduler, descs []flowDesc) (float64, err
 		}
 	}
 
+	if total == 0 {
+		t.Fatalf("expected 'total' to be nonzero")
+	}
+
 	var variance float64
 	for key := uint64(0); key < uint64(len(descs)); key++ {
-		if total == 0 {
-			t.Fatalf("expected 'total' to be nonzero")
-		}
 		// flows in this test have same expected # of requests
 		// idealPercent = total-all-active/len(flows) / total-all-active
 		// "how many bytes/requests you expect for this flow - all-active"
@@ -108,10 +111,13 @@ func consumeQueue(t *testing.T, fq *FQScheduler, descs []flowDesc) (float64, err
 func TestSingleFlow(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	queues := initQueues(1, 1)
-	fq := newFQScheduler(queues)
+	fq := newFQScheduler(queues, &clock.IntervalClock{
+		Time:     time.Now(),
+		Duration: time.Millisecond,
+	})
 
 	go func() {
-		for i := 1; i < 1000; i++ {
+		for i := 1; i < 100; i++ { // was 10000
 			it := &Packet{}
 			it.key = 1
 			it.size = uint64(rand.Int63n(10) + 1)
@@ -133,7 +139,10 @@ func TestSingleFlow(t *testing.T) {
 func TestUniformMultiFlow(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	queues := initQueues(10, 0)
-	fq := newFQScheduler(queues)
+	fq := newFQScheduler(queues, &clock.IntervalClock{
+		Time:     time.Now(),
+		Duration: time.Millisecond,
+	})
 
 	var swg sync.WaitGroup
 	var wg sync.WaitGroup
@@ -180,7 +189,10 @@ func TestUniformMultiFlow(t *testing.T) {
 func TestOneBurstingFlow(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	queues := initQueues(2, 0)
-	fq := newFQScheduler(queues)
+	fq := newFQScheduler(queues, &clock.IntervalClock{
+		Time:     time.Now(),
+		Duration: time.Millisecond,
+	})
 
 	var swg sync.WaitGroup
 	var wg sync.WaitGroup

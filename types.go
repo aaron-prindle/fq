@@ -117,7 +117,7 @@ func (p *Packet) virfinish(J int) float64 {
 
 func (p *Packet) finishRequest(q *FQScheduler) {
 	q.synctime()
-	S := NowAsUnixNano() - p.starttime
+	S := q.NowAsUnixNano() - p.starttime
 
 	// When a request finishes being served, and the actual service time was S,
 	// the queue’s virtual start time is decremented by G - S.
