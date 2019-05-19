@@ -8,12 +8,14 @@ import (
 )
 
 type FQScheduler struct {
-	lock         sync.Mutex
-	queues       []*Queue
-	vt           uint64
-	C            uint64
-	G            uint64
-	lastrealtime uint64
+	lock   sync.Mutex
+	queues []*Queue
+	// Verify float64 has enough bits
+	// We will want to be careful about having enough bits. For example, in float64, 1e20 + 1e0 == 1e20.
+	vt           float64
+	C            float64
+	G            float64
+	lastrealtime float64
 	robinidx     int
 }
 
@@ -40,18 +42,26 @@ func newFQScheduler(queues []*Queue) *FQScheduler {
 }
 
 // TODO(aaron-prindle) verify that the time units are correct/matching
-func NowAsUnixMilli() uint64 {
-	return uint64(time.Now().UnixNano() / 1e6)
+// func NowAsUnixMilli() float64 {
+// 	return float64(time.Now().UnixNano() / 1e6)
+// 	// return float64(time.Now().UnixNano() / 1e6)
+// }
+
+// TODO(aaron-prindle) verify that the time units are correct/matching
+func NowAsUnixNano() float64 {
+	return float64(time.Now().UnixNano())
+	// return float64(time.Now().UnixNano() / 1e6)
 }
 
 func (q *FQScheduler) Enqueue(packet *Packet) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
+	q.synctime()
 
 	fmt.Printf("enqueue: %d\n", packet.key)
 
 	queue := q.chooseQueue(packet)
-	packet.starttime = NowAsUnixMilli()
+	packet.starttime = NowAsUnixNano()
 	packet.queue = queue
 
 	// TODO(aaron-prindle) verify the order here
@@ -59,21 +69,20 @@ func (q *FQScheduler) Enqueue(packet *Packet) {
 	q.updateTime(packet, queue)
 }
 
-func (q *FQScheduler) now() uint64 {
+func (q *FQScheduler) now() float64 {
 	return q.vt
 }
 
 func (q *FQScheduler) synctime() {
 	// anything that looks at now updates the time?
 	// updatetime?
-	now := NowAsUnixMilli()
+	now := NowAsUnixNano()
 	timesincelast := q.lastrealtime - now
 	q.vt += timesincelast * q.getvirtualtimeratio()
 	q.lastrealtime = now
-	// return q.vt
 }
 
-func (q *FQScheduler) getvirtualtimeratio() uint64 {
+func (q *FQScheduler) getvirtualtimeratio() float64 {
 	NEQ := 0
 	reqs := 0
 
@@ -92,7 +101,7 @@ func (q *FQScheduler) getvirtualtimeratio() uint64 {
 
 	// q.vt can be 0 if NEQ >> min(sum[over q] reqs(q,t), C)
 	// ceil used to guarantee q.vt advances each step
-	return uint64(math.Ceil(float64(min(uint64(reqs), uint64(C))) / float64(uint64(NEQ))))
+	return min(float64(reqs), float64(C)) / float64(NEQ)
 }
 
 func (q *FQScheduler) updateTime(packet *Packet, queue *Queue) {
@@ -107,6 +116,8 @@ func (q *FQScheduler) updateTime(packet *Packet, queue *Queue) {
 func (q *FQScheduler) Dequeue() (*Packet, bool) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
+	// TODO(aaron-prindle) unclear if this should be here...
+	q.synctime()
 
 	queue := q.selectQueue()
 	if queue == nil {
@@ -133,25 +144,19 @@ func (q *FQScheduler) getroundrobinqueue() (*Queue, int) {
 	queue := q.queues[q.robinidx]
 	curidx := q.robinidx
 
-	q.robinidx++
-	if q.robinidx >= len(q.queues) {
-		q.robinidx = 0
-	}
+	q.robinidx = (q.robinidx + 1) % len(q.queues)
 	return queue, curidx
 }
 
 func (q *FQScheduler) selectQueue() *Queue {
-	minvirfinish := uint64(math.MaxUint64)
+	minvirfinish := math.Inf(1)
+	// minvirfinish := float64(math.Maxfloat64)
 	var minqueue *Queue
 	fmt.Println("===selectQueue===")
 	for range q.queues {
 		queue, idx := q.getroundrobinqueue()
-		// fmt.Printf("%s======\n", queue.String())
-		// if len(queue.Packets) != 0 {
-		// 	fmt.Printf("queue.Packets[0].virfinish(0): %d\n", queue.Packets[0].virfinish(0))
-		// }
 		if len(queue.Packets) != 0 && queue.Packets[0].virfinish(0) < minvirfinish {
-			fmt.Printf("queue.key: %d, queue.Packets[0].virfinish(0): %d\n", queue.key, queue.Packets[0].virfinish(0))
+			fmt.Printf("queue.key: %d, queue.Packets[0].virfinish(0): %f\n", queue.key, queue.Packets[0].virfinish(0))
 			fmt.Printf("%s======\n", queue.String())
 			minvirfinish = queue.Packets[0].virfinish(0)
 			minqueue = queue
