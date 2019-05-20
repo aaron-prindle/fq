@@ -15,23 +15,23 @@ import (
 
 type flowDesc struct {
 	// In
-	ftotal uint64 // Total units in flow
-	imin   uint64 // Min Packet size
-	imax   uint64 // Max Packet size
+	ftotal int // Total units in flow
+	imin   int // Min Packet size
+	imax   int // Max Packet size
 
 	// Out
 	idealPercent  float64
 	actualPercent float64
 }
 
-func genFlow(fq *FQScheduler, desc *flowDesc, key uint64) {
-	for i, t := uint64(1), uint64(0); t < desc.ftotal; i++ {
+func genFlow(fq *FQScheduler, desc *flowDesc, key int) {
+	for i, t := int(1), int(0); t < desc.ftotal; i++ {
 		it := new(Packet)
-		it.key = key
+		it.queueidx = key
 		if desc.imin == desc.imax {
 			it.size = desc.imax
 		} else {
-			it.size = desc.imin + uint64(rand.Int63n(int64(desc.imax-desc.imin)))
+			it.size = desc.imin + rand.Intn(desc.imax-desc.imin)
 		}
 		if t+it.size > desc.ftotal {
 			it.size = desc.ftotal - t
@@ -44,11 +44,11 @@ func genFlow(fq *FQScheduler, desc *flowDesc, key uint64) {
 }
 
 func consumeQueue(t *testing.T, fq *FQScheduler, descs []flowDesc) (float64, error) {
-	active := make(map[uint64]bool)
-	var total uint64
-	acnt := make(map[uint64]uint64)
-	cnt := make(map[uint64]uint64)
-	seqs := make(map[uint64]uint64)
+	active := make(map[int]bool)
+	var total int
+	acnt := make(map[int]int)
+	cnt := make(map[int]int)
+	seqs := make(map[int]int)
 
 	wsum := uint64(len(descs))
 
@@ -57,28 +57,28 @@ func consumeQueue(t *testing.T, fq *FQScheduler, descs []flowDesc) (float64, err
 		i.finishRequest(fq)
 
 		it := i
-		seq := seqs[it.key]
+		seq := seqs[it.queueidx]
 		if seq+1 != it.seq {
-			return 0, fmt.Errorf("Packet for flow %d came out of queue out-of-order: expected %d, got %d", it.key, seq+1, it.seq)
+			return 0, fmt.Errorf("Packet for flow %d came out of queue out-of-order: expected %d, got %d", it.queueidx, seq+1, it.seq)
 		}
-		seqs[it.key] = it.seq
+		seqs[it.queueidx] = it.seq
 
 		// set the flow this item is a part of to active
-		if cnt[it.key] == 0 {
-			active[it.key] = true
+		if cnt[it.queueidx] == 0 {
+			active[it.queueidx] = true
 		}
-		cnt[it.key] += it.size
+		cnt[it.queueidx] += it.size
 
 		// if # of active flows is equal to the # of total flows, add to total
 		// we are correctly taking a bit from each
 		if len(active) == len(descs) {
-			acnt[it.key] += it.size
+			acnt[it.queueidx] += it.size
 			total += it.size
 		}
 
 		// if all items have been processed from the flow, remove it from active
-		if cnt[it.key] == descs[it.key].ftotal {
-			delete(active, it.key)
+		if cnt[it.queueidx] == descs[it.queueidx].ftotal {
+			delete(active, it.queueidx)
 		}
 	}
 
@@ -87,7 +87,7 @@ func consumeQueue(t *testing.T, fq *FQScheduler, descs []flowDesc) (float64, err
 	}
 
 	var variance float64
-	for key := uint64(0); key < uint64(len(descs)); key++ {
+	for key := 0; key < len(descs); key++ {
 		// flows in this test have same expected # of requests
 		// idealPercent = total-all-active/len(flows) / total-all-active
 		// "how many bytes/requests you expect for this flow - all-active"
@@ -150,9 +150,9 @@ func flowStdDevTest(t *testing.T, flows []flowDesc, expectedStdDev float64) {
 	// this simulates all queued requests coming at the same time
 	now := time.Now()
 	fc := clock.NewFakeClock(now)
-	fq := newFQScheduler(queues, fc)
+	fq := NewFQScheduler(queues, fc)
 	for n := 0; n < len(flows); n++ {
-		genFlow(fq, &flows[n], uint64(n))
+		genFlow(fq, &flows[n], n)
 	}
 
 	// prior to dequeing, we switch to an interval clock which will simulate

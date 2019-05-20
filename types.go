@@ -16,30 +16,28 @@ type Packet struct {
 	// request   http.Request
 	item interface{}
 	// virfinish float64
-	size  uint64
+	size  int
 	queue *Queue
 	//
-	key       uint64
-	seq       uint64
+	// key       uint64
+	queueidx  int
+	seq       int
 	starttime float64
 }
 
 type Queue struct {
-	Packets           []*Packet
-	key               uint64
+	Packets []*Packet
+	// key               uint64
 	virstart          float64
 	RequestsExecuting []*Packet
 }
 
 func (q *Queue) String() string {
-
 	var b strings.Builder
-
-	fmt.Fprintf(&b, "queue: key: %d, virstart: %f, lastvirfinish: %f, len: %d\n", q.key, q.virstart, q.lastvirfinish(), len(q.Packets))
+	fmt.Fprintf(&b, "virstart: %f, lastvirfinish: %f, len: %d\n", q.virstart, q.lastvirfinish(), len(q.Packets))
 	fmt.Fprintf(&b, "|")
 	for i, p := range q.Packets {
 		fmt.Fprintf(&b, "packet %d: starttime: %f, virfinish: %f|", i, p.starttime, p.virfinish(i))
-
 	}
 	fmt.Fprintf(&b, "\n")
 	return b.String()
@@ -84,13 +82,8 @@ func (q *Queue) dequeue() (*Packet, bool) {
 func initQueues(n int, key uint64) []*Queue {
 	queues := []*Queue{}
 	for i := 0; i < n; i++ {
-		qkey := key
-		if key == 0 {
-			qkey = uint64(i)
-		}
 		queues = append(queues, &Queue{
 			Packets: []*Packet{},
-			key:     qkey,
 		})
 	}
 	return queues
@@ -118,4 +111,5 @@ func (p *Packet) finishRequest(q *FQScheduler) {
 	// When a request finishes being served, and the actual service time was S,
 	// the queue’s virtual start time is decremented by G - S.
 	p.queue.virstart -= G - S
+	// remove from requests executing
 }

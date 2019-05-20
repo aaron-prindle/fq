@@ -1,9 +1,7 @@
 package fq
 
 import (
-	"fmt"
 	"math"
-	"sort"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/util/clock"
@@ -23,25 +21,23 @@ type FQScheduler struct {
 }
 
 // TODO(aaron-prindle) add concurrency enforcement - 'C'
-
 func (q *FQScheduler) chooseQueue(packet *Packet) *Queue {
-	for _, queue := range q.queues {
-		if packet.key == queue.key {
-			return queue
-		}
+	if packet.queueidx < 0 || packet.queueidx > len(q.queues) {
+		panic("no matching queue for packet")
 	}
-	panic("no matching queue for packet")
+	return q.queues[packet.queueidx]
 }
 
-func newFQScheduler(queues []*Queue, clock clock.Clock) *FQScheduler {
+func NewFQScheduler(queues []*Queue, clock clock.Clock) *FQScheduler {
 	fq := &FQScheduler{
 		lock:   sync.Mutex{},
 		queues: queues,
 		clock:  clock,
-		// R(t) = (server start time) + (1 ns) * (number of rounds since server start).
-		vt: 0,
-		// vt: now,
+		vt:     0,
 	}
+	// TODO(aaron-prindle) verify that init times is correct
+	// witnessed bugs in test without this initialization
+	//   as test enqueues packets prior
 	now := fq.NowAsUnixNano()
 	fq.lastrealtime = now
 	fq.vt = now
@@ -58,7 +54,7 @@ func (q *FQScheduler) Enqueue(packet *Packet) {
 	defer q.lock.Unlock()
 	q.synctime()
 
-	fmt.Printf("enqueue: %d\n", packet.key)
+	// fmt.Printf("enqueue: %d\n", packet.key)
 
 	queue := q.chooseQueue(packet)
 	packet.starttime = q.NowAsUnixNano()
@@ -74,12 +70,9 @@ func (q *FQScheduler) now() float64 {
 }
 
 func (q *FQScheduler) synctime() {
-	// anything that looks at now updates the time?
-	// updatetime?
+	// still verifying where it makes sense to call this...
 	now := q.NowAsUnixNano()
 	timesincelast := now - q.lastrealtime
-	// fmt.Printf("timesincelast: %f\n", timesincelast)
-	// fmt.Printf("q.getvirtualtimeratio: %f\n", q.getvirtualtimeratio())
 	q.lastrealtime = now
 
 	q.vt += timesincelast * q.getvirtualtimeratio()
@@ -88,7 +81,6 @@ func (q *FQScheduler) synctime() {
 func (q *FQScheduler) getvirtualtimeratio() float64 {
 	NEQ := 0
 	reqs := 0
-
 	for _, queue := range q.queues {
 		reqs += len(queue.RequestsExecuting)
 		reqs += len(queue.Packets)
@@ -96,14 +88,10 @@ func (q *FQScheduler) getvirtualtimeratio() float64 {
 			NEQ++
 		}
 	}
-
 	// no active flows
 	if NEQ == 0 {
 		return 0
 	}
-
-	// q.vt can be 0 if NEQ >> min(sum[over q] reqs(q,t), C)
-	// ceil used to guarantee q.vt advances each step
 	return min(float64(reqs), float64(C)) / float64(NEQ)
 }
 
@@ -122,92 +110,46 @@ func (q *FQScheduler) Dequeue() (*Packet, bool) {
 	// TODO(aaron-prindle) unclear if this should be here...
 	// q.synctime()
 
-	// print sorted queue
-	q.printsortedqueue()
+	// DEBUG(aaron-prindle)
+	// q.printsortedqueue()
 
 	queue := q.selectQueue()
-	printdequeue(queue)
 
 	if queue == nil {
 		return nil, false
 	}
 
+	// DEBUG(aaron-prindle)
+	// printdequeue(queue, q.robinidx)
+
 	packet, ok := queue.dequeue()
 
 	if ok {
-		// When a request is dequeued for service the queue’s virtual start
-		// time is advanced by G
+		// When a request is dequeued for service -> q.virstart += G
 		queue.virstart += G
 	}
 	// queue.RequestsExecuting = append(queue.RequestsExecuting, packet)
 	return packet, ok
 }
 
-func (q *FQScheduler) getroundrobinqueue() (*Queue, int) {
-	// curidx := q.robinidx
-
+func (q *FQScheduler) roundrobinqueue() int {
 	q.robinidx = (q.robinidx + 1) % len(q.queues)
-	queue := q.queues[q.robinidx]
-	return queue, q.robinidx
+	return q.robinidx
 }
 
 func (q *FQScheduler) selectQueue() *Queue {
 	minvirfinish := math.Inf(1)
-	// minvirfinish := float64(math.Maxfloat64)
 	var minqueue *Queue
 	for range q.queues {
-		queue, idx := q.getroundrobinqueue()
-		// if len(queue.Packets) != 0 {
-		// 	fmt.Printf("i: %d\n", i)
-		// 	fmt.Printf("queue.key: %d, queue.Packets[0].virfinish(0): %f\n", queue.key, queue.Packets[0].virfinish(0))
-		// 	fmt.Printf("%s======\n", queue.String())
-		// }
-
+		idx := q.roundrobinqueue()
+		queue := q.queues[idx]
 		if len(queue.Packets) != 0 && queue.Packets[0].virfinish(0) < minvirfinish {
-			// fmt.Printf("queue.key: %d, queue.Packets[0].virfinish(0): %f\n", queue.key, queue.Packets[0].virfinish(0))
-			// fmt.Printf("%s======\n", queue.String())
 			minvirfinish = queue.Packets[0].virfinish(0)
 			minqueue = queue
 			q.robinidx = idx
 		}
 	}
+	// DEBUG(aaron-prindle)
 	// fmt.Printf("q.robinidx: %d\n", q.robinidx)
 	return minqueue
-}
-
-// ====
-
-func (q *FQScheduler) printsortedqueue() {
-	sorted := append(q.queues[:0:0], q.queues...)
-	sort.Slice(sorted, func(i, j int) bool {
-		var x, y float64
-		if len(sorted[i].Packets) == 0 {
-			x = math.Inf(-1)
-		} else {
-			x = sorted[i].Packets[0].virfinish(0)
-		}
-		if len(sorted[j].Packets) == 0 {
-			y = math.Inf(-1)
-		} else {
-			y = sorted[j].Packets[0].virfinish(0)
-
-		}
-		return x < y
-	})
-	for _, queue := range sorted {
-		fmt.Println("===sortedqueues===")
-		if len(queue.Packets) != 0 {
-			fmt.Printf("queue.key: %d\n", queue.key)
-			fmt.Printf("queue.Packets[0].virfinish(0): %f\n", queue.Packets[0].virfinish(0))
-			fmt.Printf("%s======\n", queue.String())
-		}
-		fmt.Println("===sortedqueuesDONE===")
-	}
-}
-
-func printdequeue(queue *Queue) {
-	fmt.Println("***dequeue***")
-	fmt.Printf("dequeue: %d\n", queue.key)
-	fmt.Printf("%s\n", queue.String())
-	fmt.Println("***")
 }
