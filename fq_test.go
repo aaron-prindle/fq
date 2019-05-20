@@ -53,7 +53,7 @@ func consumeQueue(t *testing.T, fq *FQScheduler, descs []flowDesc) (float64, err
 	wsum := uint64(len(descs))
 
 	for i, ok := fq.Dequeue(); ok; i, ok = fq.Dequeue() {
-		// TODO(aaron-prindle) trying this now...
+		// callback to update virtualtime w/ correct service time for request
 		i.finishRequest(fq)
 
 		it := i

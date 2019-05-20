@@ -26,10 +26,10 @@ type Packet struct {
 }
 
 type Queue struct {
-	Packets []*Packet
-	// key               uint64
+	Packets           []*Packet
 	virstart          float64
-	RequestsExecuting []*Packet
+	RequestsExecuting int
+	// RequestsExecuting []*Packet
 }
 
 func (q *Queue) String() string {
@@ -52,13 +52,13 @@ func (q *Queue) lastvirfinish() float64 {
 	// While the queue is empty and has no requests executing
 	// the value of its virtual start time variable is ignored and its last
 	// virtual finish time is considered to be in the virtual past
-	if len(q.Packets) == 0 && len(q.RequestsExecuting) == 0 {
+	if len(q.Packets) == 0 && q.RequestsExecuting == 0 {
 		return float64(0)
 	}
 
 	// While the queue is empty and has a request executing: the last virtual
 	// finish time is the queue’s virtual start time.
-	if len(q.Packets) == 0 && len(q.RequestsExecuting) > 0 {
+	if len(q.Packets) == 0 && q.RequestsExecuting > 0 {
 		return q.virstart
 	}
 
@@ -93,7 +93,7 @@ func (p *Packet) virfinish(J int) float64 {
 	// The virtual finish time of request number J in the queue
 	// (counting from J=1 for the head) is J * G + (virtual start time).
 
-	J++ // counting from J=1 for the head
+	J++ // counting from J=1 for the head (eg: queue.Packets[0] -> J=1)
 	// if J*G overflows
 	//    throw an error?
 	jg := float64(J * G)
@@ -111,5 +111,7 @@ func (p *Packet) finishRequest(q *FQScheduler) {
 	// When a request finishes being served, and the actual service time was S,
 	// the queue’s virtual start time is decremented by G - S.
 	p.queue.virstart -= G - S
+
 	// remove from requests executing
+	p.queue.RequestsExecuting--
 }
