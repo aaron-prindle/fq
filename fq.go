@@ -41,7 +41,7 @@ func NewFQScheduler(queues []*Queue, clock clock.Clock) *FQScheduler {
 // TODO(aaron-prindle) verify that the time units are correct/matching
 func (q *FQScheduler) NowAsUnixNano() float64 {
 	return float64(q.clock.Now().UnixNano())
-}``
+}
 
 func (q *FQScheduler) Enqueue(packet *Packet) {
 	q.lock.Lock()

@@ -135,8 +135,8 @@ func TestUniformMultiFlow(t *testing.T) {
 func TestOneBurstingFlow(t *testing.T) {
 
 	var flows = []flowDesc{
+		{1000, 1, 1, 0, 0},
 		{100, 1, 1, 0, 0},
-		{10, 1, 1, 0, 0},
 	}
 	flowStdDevTest(t, flows, 0)
 }
