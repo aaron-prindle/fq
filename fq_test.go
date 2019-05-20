@@ -5,7 +5,6 @@ import (
 	"math"
 	"math/rand"
 	"runtime"
-	"sync"
 	"testing"
 	"time"
 
@@ -25,7 +24,7 @@ type flowDesc struct {
 	actualPercent float64
 }
 
-func genFlow(fq *FQScheduler, desc *flowDesc, key uint64, done_wg *sync.WaitGroup) {
+func genFlow(fq *FQScheduler, desc *flowDesc, key uint64) {
 	for i, t := uint64(1), uint64(0); t < desc.ftotal; i++ {
 		it := new(Packet)
 		it.key = key
@@ -42,7 +41,6 @@ func genFlow(fq *FQScheduler, desc *flowDesc, key uint64, done_wg *sync.WaitGrou
 		// new packet
 		fq.Enqueue(it)
 	}
-	(*done_wg).Done()
 }
 
 func consumeQueue(t *testing.T, fq *FQScheduler, descs []flowDesc) (float64, error) {
@@ -54,9 +52,10 @@ func consumeQueue(t *testing.T, fq *FQScheduler, descs []flowDesc) (float64, err
 
 	wsum := uint64(len(descs))
 
-	// TODO(aaron-prindle) change to a better method later
-	time.Sleep(1 * time.Second)
 	for i, ok := fq.Dequeue(); ok; i, ok = fq.Dequeue() {
+		// TODO(aaron-prindle) trying this now...
+		i.finishRequest(fq)
+
 		it := i
 		seq := seqs[it.key]
 		if seq+1 != it.seq {
@@ -109,44 +108,13 @@ func consumeQueue(t *testing.T, fq *FQScheduler, descs []flowDesc) (float64, err
 }
 
 func TestSingleFlow(t *testing.T) {
-	runtime.GOMAXPROCS(runtime.NumCPU())
-	queues := initQueues(1, 1)
-	fq := newFQScheduler(queues, &clock.IntervalClock{
-		Time:     time.Now(),
-		Duration: time.Millisecond,
-	})
-
-	go func() {
-		for i := 1; i < 100; i++ { // was 10000
-			it := &Packet{}
-			it.key = 1
-			it.size = uint64(rand.Int63n(10) + 1)
-			it.seq = uint64(i)
-			fq.Enqueue(it)
-		}
-	}()
-
-	var seq uint64
-	time.Sleep(1 * time.Second)
-	for it, ok := fq.Dequeue(); ok; it, ok = fq.Dequeue() {
-		if seq+1 != it.seq {
-			t.Fatalf("Packet came out of queue out-of-order: expected %d, got %d", seq+1, it.seq)
-		}
-		seq = it.seq
+	var flows = []flowDesc{
+		{100, 1, 1, 0, 0},
 	}
+	flowStdDevTest(t, flows, 0)
 }
 
 func TestUniformMultiFlow(t *testing.T) {
-	runtime.GOMAXPROCS(runtime.NumCPU())
-	queues := initQueues(10, 0)
-	fq := newFQScheduler(queues, &clock.IntervalClock{
-		Time:     time.Now(),
-		Duration: time.Millisecond,
-	})
-
-	var swg sync.WaitGroup
-	var wg sync.WaitGroup
-
 	var flows = []flowDesc{
 		{100, 1, 1, 0, 0},
 		{100, 1, 1, 0, 0},
@@ -159,59 +127,41 @@ func TestUniformMultiFlow(t *testing.T) {
 		{100, 1, 1, 0, 0},
 		{100, 1, 1, 0, 0},
 	}
-
-	swg.Add(1)
-	wg.Add(len(flows))
-	for n := 0; n < len(flows); n++ {
-		go genFlow(fq, &flows[n], uint64(n), &wg)
-	}
-
-	go func() {
-		wg.Wait()
-	}()
-	swg.Done()
-
-	stdDev, err := consumeQueue(t, fq, flows)
-
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-
-	if stdDev > 0.35 {
-		// if stdDev > 0.1 { w/o variance division
-		for k, d := range flows {
-			t.Logf("For flow %d: Expected %v%%, got %v%%", k, d.idealPercent, d.actualPercent)
-		}
-		t.Fatalf("StdDev was expected to be < 0.45 but got %v", stdDev)
-	}
+	// .35 was expectedStdDev used in
+	// https://github.com/tadglines/wfq/blob/master/wfq_test.go
+	flowStdDevTest(t, flows, .041)
 }
 
 func TestOneBurstingFlow(t *testing.T) {
-	runtime.GOMAXPROCS(runtime.NumCPU())
-	queues := initQueues(2, 0)
-	fq := newFQScheduler(queues, &clock.IntervalClock{
-		Time:     time.Now(),
-		Duration: time.Millisecond,
-	})
-
-	var swg sync.WaitGroup
-	var wg sync.WaitGroup
 
 	var flows = []flowDesc{
 		{100, 1, 1, 0, 0},
 		{10, 1, 1, 0, 0},
 	}
+	flowStdDevTest(t, flows, 0)
+}
 
-	swg.Add(1)
-	wg.Add(len(flows))
+func flowStdDevTest(t *testing.T, flows []flowDesc, expectedStdDev float64) {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	queues := initQueues(len(flows), 0)
+
+	// a fake clock that returns the current time is used for enqueing which
+	// returns the same time (now)
+	// this simulates all queued requests coming at the same time
+	now := time.Now()
+	fc := clock.NewFakeClock(now)
+	fq := newFQScheduler(queues, fc)
 	for n := 0; n < len(flows); n++ {
-		go genFlow(fq, &flows[n], uint64(n), &wg)
+		genFlow(fq, &flows[n], uint64(n))
 	}
 
-	go func() {
-		wg.Wait()
-	}()
-	swg.Done()
+	// prior to dequeing, we switch to an interval clock which will simulate
+	// each dequeue happening at a fixed interval of time
+	ic := &clock.IntervalClock{
+		Time:     now,
+		Duration: time.Millisecond,
+	}
+	fq.clock = ic
 
 	stdDev, err := consumeQueue(t, fq, flows)
 
@@ -219,12 +169,10 @@ func TestOneBurstingFlow(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	// TODO(aaron-prindle) verify that this high of a stdDev makes sense for one high rate flow
-	if stdDev > 2.7 { // 2.63
-		// if stdDev > 0.1 {
+	if stdDev > expectedStdDev {
 		for k, d := range flows {
 			t.Logf("For flow %d: Expected %v%%, got %v%%", k, d.idealPercent, d.actualPercent)
 		}
-		t.Fatalf("StdDev was expected to be < 0.1 but got %v", stdDev)
+		t.Fatalf("StdDev was expected to be < %f but got %v", expectedStdDev, stdDev)
 	}
 }

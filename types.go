@@ -61,18 +61,14 @@ func (q *Queue) lastvirfinish() float64 {
 	// While the queue is empty and has a request executing: the last virtual
 	// finish time is the queue’s virtual start time.
 	if len(q.Packets) == 0 && len(q.RequestsExecuting) > 0 {
-
 		return q.virstart
 	}
 
 	// While the queue is non-empty:
 	// the last virtual finish time of the queue is
 	// the virtual finish time of the last request in the queue.
-	// J * G + (virtual start time)
-	// J is len(q.Packets) for the last request in the queue
-
 	last := len(q.Packets) - 1
-	fmt.Println(last)
+	// fmt.Println(last)
 	return q.Packets[last].virfinish(last)
 }
 

@@ -3,6 +3,7 @@ package fq
 import (
 	"fmt"
 	"math"
+	"sort"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/util/clock"
@@ -41,14 +42,11 @@ func newFQScheduler(queues []*Queue, clock clock.Clock) *FQScheduler {
 		vt: 0,
 		// vt: now,
 	}
+	now := fq.NowAsUnixNano()
+	fq.lastrealtime = now
+	fq.vt = now
 	return fq
 }
-
-// TODO(aaron-prindle) verify that the time units are correct/matching
-// func NowAsUnixMilli() float64 {
-// 	return float64(time.Now().UnixNano() / 1e6)
-// 	// return float64(time.Now().UnixNano() / 1e6)
-// }
 
 // TODO(aaron-prindle) verify that the time units are correct/matching
 func (q *FQScheduler) NowAsUnixNano() float64 {
@@ -79,9 +77,12 @@ func (q *FQScheduler) synctime() {
 	// anything that looks at now updates the time?
 	// updatetime?
 	now := q.NowAsUnixNano()
-	timesincelast := q.lastrealtime - now
-	q.vt += timesincelast * q.getvirtualtimeratio()
+	timesincelast := now - q.lastrealtime
+	// fmt.Printf("timesincelast: %f\n", timesincelast)
+	// fmt.Printf("q.getvirtualtimeratio: %f\n", q.getvirtualtimeratio())
 	q.lastrealtime = now
+
+	q.vt += timesincelast * q.getvirtualtimeratio()
 }
 
 func (q *FQScheduler) getvirtualtimeratio() float64 {
@@ -119,17 +120,17 @@ func (q *FQScheduler) Dequeue() (*Packet, bool) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 	// TODO(aaron-prindle) unclear if this should be here...
-	q.synctime()
+	// q.synctime()
+
+	// print sorted queue
+	q.printsortedqueue()
 
 	queue := q.selectQueue()
+	printdequeue(queue)
+
 	if queue == nil {
 		return nil, false
 	}
-
-	fmt.Println("***dequeue***")
-	fmt.Printf("dequeue: %d\n", queue.key)
-
-	fmt.Printf("%s****\n", queue.String())
 
 	packet, ok := queue.dequeue()
 
@@ -143,28 +144,70 @@ func (q *FQScheduler) Dequeue() (*Packet, bool) {
 }
 
 func (q *FQScheduler) getroundrobinqueue() (*Queue, int) {
-	queue := q.queues[q.robinidx]
-	curidx := q.robinidx
+	// curidx := q.robinidx
 
 	q.robinidx = (q.robinidx + 1) % len(q.queues)
-	return queue, curidx
+	queue := q.queues[q.robinidx]
+	return queue, q.robinidx
 }
 
 func (q *FQScheduler) selectQueue() *Queue {
 	minvirfinish := math.Inf(1)
 	// minvirfinish := float64(math.Maxfloat64)
 	var minqueue *Queue
-	fmt.Println("===selectQueue===")
 	for range q.queues {
 		queue, idx := q.getroundrobinqueue()
+		// if len(queue.Packets) != 0 {
+		// 	fmt.Printf("i: %d\n", i)
+		// 	fmt.Printf("queue.key: %d, queue.Packets[0].virfinish(0): %f\n", queue.key, queue.Packets[0].virfinish(0))
+		// 	fmt.Printf("%s======\n", queue.String())
+		// }
+
 		if len(queue.Packets) != 0 && queue.Packets[0].virfinish(0) < minvirfinish {
-			fmt.Printf("queue.key: %d, queue.Packets[0].virfinish(0): %f\n", queue.key, queue.Packets[0].virfinish(0))
-			fmt.Printf("%s======\n", queue.String())
+			// fmt.Printf("queue.key: %d, queue.Packets[0].virfinish(0): %f\n", queue.key, queue.Packets[0].virfinish(0))
+			// fmt.Printf("%s======\n", queue.String())
 			minvirfinish = queue.Packets[0].virfinish(0)
 			minqueue = queue
 			q.robinidx = idx
 		}
 	}
-
+	// fmt.Printf("q.robinidx: %d\n", q.robinidx)
 	return minqueue
+}
+
+// ====
+
+func (q *FQScheduler) printsortedqueue() {
+	sorted := append(q.queues[:0:0], q.queues...)
+	sort.Slice(sorted, func(i, j int) bool {
+		var x, y float64
+		if len(sorted[i].Packets) == 0 {
+			x = math.Inf(-1)
+		} else {
+			x = sorted[i].Packets[0].virfinish(0)
+		}
+		if len(sorted[j].Packets) == 0 {
+			y = math.Inf(-1)
+		} else {
+			y = sorted[j].Packets[0].virfinish(0)
+
+		}
+		return x < y
+	})
+	for _, queue := range sorted {
+		fmt.Println("===sortedqueues===")
+		if len(queue.Packets) != 0 {
+			fmt.Printf("queue.key: %d\n", queue.key)
+			fmt.Printf("queue.Packets[0].virfinish(0): %f\n", queue.Packets[0].virfinish(0))
+			fmt.Printf("%s======\n", queue.String())
+		}
+		fmt.Println("===sortedqueuesDONE===")
+	}
+}
+
+func printdequeue(queue *Queue) {
+	fmt.Println("***dequeue***")
+	fmt.Printf("dequeue: %d\n", queue.key)
+	fmt.Printf("%s\n", queue.String())
+	fmt.Println("***")
 }
